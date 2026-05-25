@@ -371,11 +371,44 @@ const QuickAddModal = ({ type, roles, onClose, onDone }) => {
     contact_number: "",
     gender: "Male",
     dob: "",
-    joining_date: "",
+    joining_date: new Date().toISOString().slice(0, 10),
     level: "ojt level 1",
     custom_role_id: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    axios.get(`${API}contacts`).then((r) => setContacts(r.data.contacts || r.data || [])).catch(() => {});
+    const endpoint = isStudent ? "students" : "ojt";
+    const idKey    = isStudent ? "student_id" : "ojt_id";
+    const prefix   = isStudent ? "STU" : "OJT";
+    axios.get(`${API}${endpoint}`).then((r) => {
+      const list = r.data.students || r.data.ojts || r.data || [];
+      const used = list
+        .map((x) => new RegExp(`^${prefix}-(\\d+)$`, "i").exec(x[idKey] || ""))
+        .filter(Boolean)
+        .map((m) => parseInt(m[1], 10));
+      const next = (used.length ? Math.max(...used) : 0) + 1;
+      setForm((f) => ({ ...f, [idField]: `${prefix}-${String(next).padStart(3, "0")}` }));
+    }).catch(() => {});
+    // eslint-disable-next-line
+  }, []);
+
+  const pickContact = (id) => {
+    const c = contacts.find((x) => String(x.id) === String(id));
+    if (!c) return;
+    setForm((f) => ({
+      ...f,
+      full_name:      `${c.first_name || ""} ${c.last_name || ""}`.trim() || f.full_name,
+      cnic:           c.cnic || f.cnic,
+      gender:         c.gender || f.gender,
+      dob:            c.dob ? new Date(c.dob).toISOString().slice(0, 10) : f.dob,
+      email:          c.emails?.[0]?.email_address  || f.email,
+      contact_number: c.phoneNumbers?.[0]?.phone_number || f.contact_number,
+      joining_date:   c.office?.joining_date || f.joining_date,
+    }));
+  };
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -407,7 +440,37 @@ const QuickAddModal = ({ type, roles, onClose, onDone }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <Field label={`${idLabel} *`} value={form[idField]} onChange={(v) => set(idField, v)} placeholder={isStudent ? "STU-001" : "OJT-001"} />
+          <div className="md:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+            <label className="text-[11px] font-semibold text-emerald-800 uppercase block mb-1">
+              Pick from existing Contacts (auto-fills personal info)
+            </label>
+            <select
+              onChange={(e) => pickContact(e.target.value)}
+              className="w-full border border-emerald-300 rounded px-3 py-2 bg-white"
+              defaultValue=""
+            >
+              <option value="">— Start blank or select a contact —</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}{c.cnic ? ` · ${c.cnic}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-emerald-700 mt-1">
+              Don't see them? <a href="/contacts" className="underline">Add them in Contacts first</a>.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 uppercase block mb-1">
+              {idLabel} * <span className="text-emerald-600 text-[10px] ml-1">auto-generated</span>
+            </label>
+            <input
+              value={form[idField]}
+              readOnly
+              title="Auto-generated based on existing records"
+              className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 text-gray-700 font-mono"
+            />
+          </div>
           <Field label="Full Name *" value={form.full_name} onChange={(v) => set("full_name", v)} />
           <Field label="Email *" value={form.email} onChange={(v) => set("email", v)} />
           <Field label="CNIC *" value={form.cnic} onChange={(v) => set("cnic", v)} placeholder="XXXXX-XXXXXXX-X" />
@@ -453,6 +516,16 @@ const HrQuickAddModal = ({ roles, onClose, onDone }) => {
   const [password, setPassword] = useState("");
   const [roleId, setRoleId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    axios.get(`${API}contacts`).then((r) => setContacts(r.data.contacts || r.data || [])).catch(() => {});
+  }, []);
+
+  const pickContact = (id) => {
+    const c = contacts.find((x) => String(x.id) === String(id));
+    if (c?.emails?.[0]?.email_address) setEmail(c.emails[0].email_address);
+  };
 
   const submit = async () => {
     if (!email.trim() || !password.trim()) {
@@ -487,6 +560,23 @@ const HrQuickAddModal = ({ roles, onClose, onDone }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+            <label className="text-[11px] font-semibold text-emerald-800 uppercase block mb-1">
+              Pick from existing Contacts (auto-fills email)
+            </label>
+            <select
+              onChange={(e) => pickContact(e.target.value)}
+              className="w-full border border-emerald-300 rounded px-3 py-2 bg-white"
+              defaultValue=""
+            >
+              <option value="">— Start blank or select a contact —</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}{c.emails?.[0] ? ` · ${c.emails[0].email_address}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           <Field label="Email *" value={email} onChange={setEmail} placeholder="hr@example.com" />
           <Field label="Password *" type="password" value={password} onChange={setPassword} placeholder="min 8 characters" />
           <div>
