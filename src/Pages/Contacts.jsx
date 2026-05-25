@@ -1,0 +1,971 @@
+// frontend/src/Pages/Contacts.jsx
+import React, { useEffect, useState } from "react";
+import { useContactStore } from "../Store/contactStore";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Search, Plus, Grid, List, MapPin, Check, Phone, Mail, User, Activity,
+  AlertTriangle, X, Upload, Trash2, Edit2, RotateCcw, UserCheck, ShieldAlert,
+} from "lucide-react";
+
+const Contacts = () => {
+  const {
+    contacts, mergeLogs, loading, error, fetchContacts, createContact,
+    updateContact, deleteContact, checkDuplicates, mergeContacts, undoMerge, fetchMergeLogs
+  } = useContactStore();
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState("list");
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMergeOpen, setIsMergeOpen] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState("contacts");
+
+  const [duplicatesMap, setDuplicatesMap] = useState([]);
+  const [activeDuplicatePair, setActiveDuplicatePair] = useState(null);
+  const [mergeConflictChoices, setMergeConflictChoices] = useState({});
+
+  const [formData, setFormData] = useState({
+    first_name: "",
+    last_name: "",
+    cnic: "",
+    gender: "Male",
+    dob: "",
+    is_syed: false,
+    phoneNumbers: [{ phone_number: "", phone_type: "Mobile" }],
+    emails: [{ email_address: "", email_type: "Personal" }],
+    addresses: [{ address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" }],
+    socials: [{ platform: "LinkedIn", url: "" }]
+  });
+
+  const [formErrors, setFormErrors] = useState({});
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    fetchContacts();
+    fetchMergeLogs();
+    refreshDuplicates();
+  }, []);
+
+  const refreshDuplicates = async () => {
+    const dupes = await checkDuplicates();
+    setDuplicatesMap(dupes);
+  };
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const getInitials = (first, last) =>
+    `${first?.charAt(0) || ""}${last?.charAt(0) || ""}`.toUpperCase();
+
+  const addListField = (key, defaultValue) => {
+    setFormData(prev => ({ ...prev, [key]: [...prev[key], defaultValue] }));
+  };
+
+  const removeListField = (key, index) => {
+    if (formData[key].length === 1) return;
+    setFormData(prev => ({ ...prev, [key]: prev[key].filter((_, i) => i !== index) }));
+  };
+
+  const updateListField = (key, index, field, value) => {
+    setFormData(prev => {
+      const list = [...prev[key]];
+      list[index] = { ...list[index], [field]: value };
+      return { ...prev, [key]: list };
+    });
+  };
+
+  const checkCnicLuhn = (digits) => {
+    let sum = 0, shouldDouble = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let val = parseInt(digits[i], 10);
+      if (shouldDouble) { val *= 2; if (val > 9) val -= 9; }
+      sum += val;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 === 0;
+  };
+
+  const validateCnic = (cnic, gender) => {
+    const regex = /^\d{5}-\d{7}-\d{1}$/;
+    if (!regex.test(cnic)) return "CNIC must match XXXXX-XXXXXXX-X format.";
+    const digits = cnic.replace(/\D/g, "");
+    const lastDigit = parseInt(digits[12], 10);
+    if (gender === "Male" && lastDigit % 2 === 0) return "Last digit of CNIC for Male must be odd.";
+    if (gender === "Female" && lastDigit % 2 !== 0) return "Last digit of CNIC for Female must be even.";
+    if (!checkCnicLuhn(digits)) return "CNIC failed Luhn algorithm checksum verification.";
+    return null;
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.first_name.trim()) errors.first_name = "First name is required.";
+    if (!formData.last_name.trim()) errors.last_name = "Last name is required.";
+    if (!formData.dob) errors.dob = "Date of Birth is required.";
+    const cnicErr = validateCnic(formData.cnic, formData.gender);
+    if (cnicErr) errors.cnic = cnicErr;
+    formData.emails.forEach((e, idx) => {
+      if (e.email_address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email_address))
+        errors[`email_${idx}`] = "Invalid email format.";
+    });
+    formData.phoneNumbers.forEach((p, idx) => {
+      if (p.phone_number && !/^\+?[1-9]\d{1,14}$/.test(p.phone_number))
+        errors[`phone_${idx}`] = "Invalid E.164 phone format.";
+    });
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) { showToast("Please check errors in the form.", "error"); return; }
+
+    const payload = new FormData();
+    payload.append("first_name", formData.first_name);
+    payload.append("last_name", formData.last_name);
+    payload.append("cnic", formData.cnic);
+    payload.append("gender", formData.gender);
+    payload.append("dob", formData.dob);
+    payload.append("is_syed", formData.is_syed);
+
+    const finalPhones = formData.phoneNumbers.filter(p => p.phone_number.trim());
+    const finalEmails = formData.emails.filter(e => e.email_address.trim());
+    const finalAddresses = formData.addresses.filter(a => a.address_line1.trim());
+    const finalSocials = formData.socials.filter(s => s.url.trim());
+
+    payload.append("phoneNumbers", JSON.stringify(finalPhones));
+    payload.append("emails", JSON.stringify(finalEmails));
+    payload.append("addresses", JSON.stringify(finalAddresses));
+    payload.append("socials", JSON.stringify(finalSocials));
+    if (imageFile) payload.append("profile_picture", imageFile);
+
+    let res;
+    if (selectedContact) {
+      res = await updateContact(selectedContact.id, payload);
+    } else {
+      res = await createContact(payload);
+    }
+
+    if (res.success) {
+      showToast(selectedContact ? "Contact updated successfully!" : "Contact created successfully!");
+      if (res.suggestions?.length > 0) showToast(`Suggestion: ${res.suggestions[0].reason}`, "info");
+      setIsModalOpen(false);
+      setSelectedContact(null);
+      resetForm();
+      fetchContacts();
+      refreshDuplicates();
+    } else {
+      showToast(res.error || "Save operation failed.", "error");
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      first_name: "", last_name: "", cnic: "", gender: "Male", dob: "", is_syed: false,
+      phoneNumbers: [{ phone_number: "", phone_type: "Mobile" }],
+      emails: [{ email_address: "", email_type: "Personal" }],
+      addresses: [{ address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" }],
+      socials: [{ platform: "LinkedIn", url: "" }]
+    });
+    setImageFile(null);
+    setImagePreview(null);
+    setFormErrors({});
+  };
+
+  const openAddModal = () => { setSelectedContact(null); resetForm(); setIsModalOpen(true); };
+
+  const openEditModal = (c) => {
+    setSelectedContact(c);
+    setFormData({
+      first_name: c.first_name || "", last_name: c.last_name || "",
+      cnic: c.cnic || "", gender: c.gender || "Male",
+      dob: c.dob ? c.dob.split("T")[0] : "", is_syed: c.is_syed || false,
+      phoneNumbers: c.phoneNumbers?.length ? c.phoneNumbers : [{ phone_number: "", phone_type: "Mobile" }],
+      emails: c.emails?.length ? c.emails : [{ email_address: "", email_type: "Personal" }],
+      addresses: c.addresses?.length ? c.addresses : [{ address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" }],
+      socials: c.socials?.length ? c.socials : [{ platform: "LinkedIn", url: "" }]
+    });
+    setImagePreview(c.profile_picture);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to permanently delete this contact?")) {
+      const success = await deleteContact(id);
+      if (success) { showToast("Contact deleted successfully."); refreshDuplicates(); }
+      else showToast("Failed to delete contact.", "error");
+    }
+  };
+
+  const handleMergeSubmit = async () => {
+    const payload = { masterId: activeDuplicatePair.master.id, sourceId: activeDuplicatePair.source.id, conflictChoices: mergeConflictChoices };
+    const res = await mergeContacts(payload);
+    if (res.success) {
+      showToast("Contacts merged successfully.");
+      setIsMergeOpen(false); setActiveDuplicatePair(null); setMergeConflictChoices({});
+      fetchContacts(); refreshDuplicates(); fetchMergeLogs();
+    } else {
+      showToast(res.error || "Merge failed.", "error");
+    }
+  };
+
+  const handleUndo = async (logId) => {
+    if (window.confirm("Reversing this merge will restore both deleted contact and revert values. Proceed?")) {
+      const success = await undoMerge(logId);
+      if (success) { showToast("Merge successfully reversed. Contacts restored!"); refreshDuplicates(); }
+      else showToast("Failed to undo merge.", "error");
+    }
+  };
+
+  const filteredContacts = contacts.filter(c => {
+    const full = `${c.first_name} ${c.last_name}`.toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return (
+      full.includes(query) || c.cnic?.includes(query) ||
+      c.phoneNumbers?.some(p => p.phone_number.includes(query)) ||
+      c.emails?.some(e => e.email_address.toLowerCase().includes(query)) ||
+      c.addresses?.some(a => a.city?.toLowerCase().includes(query))
+    );
+  });
+
+  const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none";
+  const labelCls = "block text-xs font-semibold text-gray-600 mb-1";
+
+  return (
+    <div className="container mx-auto p-6">
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-5 py-3 rounded-lg shadow-lg font-semibold text-sm ${
+              toast.type === "error" ? "bg-red-100 text-red-700 border-l-4 border-red-500"
+              : toast.type === "info" ? "bg-amber-100 text-amber-700 border-l-4 border-amber-500"
+              : "bg-green-100 text-green-700 border-l-4 border-green-500"
+            }`}
+          >
+            {toast.type === "error" ? <ShieldAlert className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800">Contacts Management</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {contacts.length} contact{contacts.length !== 1 ? "s" : ""} in CRM database
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setActiveSubTab("contacts")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
+              activeSubTab === "contacts"
+                ? "bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-200"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+            }`}
+          >
+            <User size={16} /> Contacts
+          </button>
+          <button
+            onClick={() => setActiveSubTab("history")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
+              activeSubTab === "history"
+                ? "bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-200"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+            }`}
+          >
+            <RotateCcw size={16} /> Audit Log
+          </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow-md shadow-orange-200"
+          >
+            <Plus size={16} /> Add Contact
+          </button>
+        </div>
+      </div>
+
+      {activeSubTab === "contacts" ? (
+        <>
+          {/* Duplicate Warning */}
+          {duplicatesMap.length > 0 && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex gap-3 items-start">
+                <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-800 text-sm">Fuzzy Duplicate Matches Identified</p>
+                  <p className="text-amber-700 text-xs mt-0.5">
+                    {duplicatesMap.length} pair{duplicatesMap.length !== 1 ? "s" : ""} of potential duplicate records found.
+                  </p>
+                </div>
+              </div>
+              {duplicatesMap.slice(0, 1).map((dup, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setActiveDuplicatePair({ master: dup.contact, source: dup.possibleDuplicates[0].contact });
+                    setIsMergeOpen(true);
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition flex-shrink-0"
+                >
+                  Resolve Matches
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Search + View toggle */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-6">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search by name, CNIC, email, phone..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+            </div>
+            <div className="flex items-center gap-1 border border-gray-300 bg-white p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded-md transition ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
+                title="List view"
+              >
+                <List size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-2 rounded-md transition ${viewMode === "grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
+                title="Grid view"
+              >
+                <Grid size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+            </div>
+          ) : filteredContacts.length === 0 ? (
+            <div className="bg-white rounded-lg shadow flex flex-col items-center justify-center h-48 text-gray-400">
+              <User className="w-10 h-10 mb-2 text-gray-300" />
+              <p className="text-sm">No contacts found matching your search.</p>
+            </div>
+          ) : viewMode === "list" ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="overflow-x-auto bg-white rounded-lg shadow"
+            >
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-[oklch(0.67_0.19_42.13)]">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">CNIC</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Gender</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Ages (Solar / Lunar)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Phone</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">City</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-800 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  <AnimatePresence>
+                    {filteredContacts.map(c => {
+                      const hasDupe = duplicatesMap.some(d => d.contact.id === c.id);
+                      return (
+                        <motion.tr
+                          key={c.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="hover:bg-gray-50"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-3">
+                              {c.profile_picture ? (
+                                <img src={c.profile_picture} alt="Profile" className="h-9 w-9 rounded-full object-cover border border-gray-200" />
+                              ) : (
+                                <div className="h-9 w-9 rounded-full bg-orange-100 text-orange-600 font-bold flex items-center justify-center text-sm">
+                                  {getInitials(c.first_name, c.last_name)}
+                                </div>
+                              )}
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-semibold text-gray-900">{c.first_name} {c.last_name}</span>
+                                  {c.is_syed && (
+                                    <span className="text-[9px] bg-orange-500 text-white font-bold px-1.5 py-0.5 rounded-full uppercase">Syed</span>
+                                  )}
+                                  {hasDupe && (
+                                    <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                      <AlertTriangle size={9} /> Dupe
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{c.cnic}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{c.gender}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {c.current_age_solar} yrs / {c.current_age_lunar} AH
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {c.phoneNumbers?.[0]?.phone_number || <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {c.emails?.[0]?.email_address || <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {c.addresses?.[0]?.city || <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <div className="flex items-center justify-end gap-3">
+                              <button onClick={() => openEditModal(c)} className="text-blue-600 hover:text-blue-900" title="Edit">
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button onClick={() => handleDelete(c.id)} className="text-red-600 hover:text-red-900" title="Delete">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </motion.div>
+          ) : (
+            /* Grid View */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {filteredContacts.map(c => {
+                const hasDupe = duplicatesMap.some(d => d.contact.id === c.id);
+                return (
+                  <motion.div
+                    key={c.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-5 relative"
+                  >
+                    {hasDupe && (
+                      <div className="absolute top-3 right-3 bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <AlertTriangle size={10} /> Dupe
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 mb-4">
+                      {c.profile_picture ? (
+                        <img src={c.profile_picture} alt="Profile" className="h-12 w-12 rounded-full object-cover border border-gray-200" />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-orange-100 text-orange-600 font-bold flex items-center justify-center text-base">
+                          {getInitials(c.first_name, c.last_name)}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="font-bold text-gray-800 text-sm">{c.first_name} {c.last_name}</h3>
+                          {c.is_syed && (
+                            <span className="text-[9px] bg-orange-500 text-white font-bold px-1.5 py-0.5 rounded-full uppercase">Syed</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 font-mono">{c.cnic}</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-3 mb-3 grid grid-cols-2 gap-2 text-xs text-gray-500">
+                      <div>
+                        <span className="block text-[10px] uppercase font-semibold text-gray-400">Solar Age</span>
+                        <span className="font-semibold text-gray-700">{c.current_age_solar} yrs</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase font-semibold text-gray-400">Lunar AH</span>
+                        <span className="font-semibold text-gray-700">{c.current_age_lunar} AH</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs text-gray-500 mb-4">
+                      {c.phoneNumbers?.[0] && (
+                        <div className="flex items-center gap-2">
+                          <Phone size={12} className="text-orange-500 flex-shrink-0" />
+                          <span className="truncate">{c.phoneNumbers[0].phone_number}</span>
+                        </div>
+                      )}
+                      {c.emails?.[0] && (
+                        <div className="flex items-center gap-2">
+                          <Mail size={12} className="text-orange-500 flex-shrink-0" />
+                          <span className="truncate">{c.emails[0].email_address}</span>
+                        </div>
+                      )}
+                      {c.addresses?.[0] && (
+                        <div className="flex items-center gap-2">
+                          <MapPin size={12} className="text-orange-500 flex-shrink-0" />
+                          <span className="truncate">{c.addresses[0].city}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 border-t border-gray-100 pt-3">
+                      <button
+                        onClick={() => openEditModal(c)}
+                        className="flex-1 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition flex items-center justify-center gap-1"
+                      >
+                        <Edit2 size={12} /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(c.id)}
+                        className="flex-1 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition flex items-center justify-center gap-1"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        /* Audit Log Tab */
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-800">Immutable Merge Resolution Logs</h3>
+            <p className="text-sm text-gray-500 mt-0.5">{mergeLogs.length} merge operation{mergeLogs.length !== 1 ? "s" : ""} recorded</p>
+          </div>
+          {mergeLogs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+              <RotateCcw className="w-10 h-10 mb-2 text-gray-300" />
+              <p className="text-sm">No merge operations in audit trail.</p>
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-[oklch(0.67_0.19_42.13)]">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Log ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Master Record</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Source Record</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Timestamp</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-800 uppercase tracking-wider">Action</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {mergeLogs.map(log => (
+                  <tr key={log.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">{log.id.slice(0, 8)}...</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">
+                      {log.master_snapshot?.first_name} {log.master_snapshot?.last_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {log.source_snapshot?.first_name} {log.source_snapshot?.last_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        log.status === "Merged"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-green-100 text-green-800"
+                      }`}>
+                        {log.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(log.merged_at).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      {log.status === "Merged" && (
+                        <button
+                          onClick={() => handleUndo(log.id)}
+                          className="flex items-center gap-1.5 ml-auto px-3 py-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                        >
+                          <RotateCcw size={12} /> Revert
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── ADD / EDIT MODAL ── */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <h3 className="text-xl font-bold text-gray-800">
+                  {selectedContact ? "Edit Contact Record" : "Add New Contact"}
+                </h3>
+                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700">
+                  <X size={22} />
+                </button>
+              </div>
+
+              <form onSubmit={handleFormSubmit} className="p-6 space-y-6">
+                {/* Profile Picture + Name */}
+                <div className="flex flex-col md:flex-row gap-6 items-start pb-6 border-b border-gray-200">
+                  <div className="relative flex-shrink-0">
+                    {imagePreview ? (
+                      <img src={imagePreview} className="w-20 h-20 rounded-full object-cover border-2 border-gray-200" alt="Preview" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-full bg-orange-100 border-2 border-orange-200 flex items-center justify-center text-orange-500">
+                        <User size={28} />
+                      </div>
+                    )}
+                    <label className="absolute bottom-0 right-0 p-1.5 bg-orange-500 hover:bg-orange-600 rounded-full cursor-pointer shadow transition">
+                      <Upload className="w-3 h-3 text-white" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={e => {
+                          const file = e.target.files[0];
+                          if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 w-full">
+                    <div>
+                      <label className={labelCls}>First Name *</label>
+                      <input type="text" value={formData.first_name}
+                        onChange={e => setFormData({ ...formData, first_name: e.target.value })}
+                        className={inputCls} placeholder="e.g. Muhammad" />
+                      {formErrors.first_name && <p className="text-red-500 text-xs mt-1">{formErrors.first_name}</p>}
+                    </div>
+                    <div>
+                      <label className={labelCls}>Last Name *</label>
+                      <input type="text" value={formData.last_name}
+                        onChange={e => setFormData({ ...formData, last_name: e.target.value })}
+                        className={inputCls} placeholder="e.g. Ali" />
+                      {formErrors.last_name && <p className="text-red-500 text-xs mt-1">{formErrors.last_name}</p>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Core fields */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className={labelCls}>Gender *</label>
+                    <select value={formData.gender}
+                      onChange={e => setFormData({ ...formData, gender: e.target.value })}
+                      className={inputCls}>
+                      <option>Male</option><option>Female</option>
+                      <option>Other</option><option>Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>CNIC (Strictly Validated) *</label>
+                    <input type="text" placeholder="XXXXX-XXXXXXX-X" value={formData.cnic}
+                      onChange={e => setFormData({ ...formData, cnic: e.target.value })}
+                      className={inputCls} />
+                    {formErrors.cnic && <p className="text-red-500 text-xs mt-1">{formErrors.cnic}</p>}
+                  </div>
+                  <div>
+                    <label className={labelCls}>Date of Birth *</label>
+                    <input type="date" value={formData.dob}
+                      onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                      className={inputCls} />
+                    {formErrors.dob && <p className="text-red-500 text-xs mt-1">{formErrors.dob}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 md:col-span-4">
+                    <input type="checkbox" id="is_syed" checked={formData.is_syed}
+                      onChange={e => setFormData({ ...formData, is_syed: e.target.checked })}
+                      className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500" />
+                    <label htmlFor="is_syed" className="text-sm text-gray-700 cursor-pointer font-medium">
+                      Is Syed (Auto Prefix: Syed / Syeda)
+                    </label>
+                  </div>
+                </div>
+
+                {/* Phone Numbers */}
+                <div className="border-t border-gray-200 pt-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Phone Numbers</h4>
+                    <button type="button" onClick={() => addListField("phoneNumbers", { phone_number: "", phone_type: "Mobile" })}
+                      className="text-xs font-semibold text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                      <Plus size={14} /> Add Phone
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {formData.phoneNumbers.map((p, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input type="text" placeholder="+923001234567" value={p.phone_number}
+                          onChange={e => updateListField("phoneNumbers", idx, "phone_number", e.target.value)}
+                          className={`flex-1 ${inputCls}`} />
+                        <select value={p.phone_type}
+                          onChange={e => updateListField("phoneNumbers", idx, "phone_type", e.target.value)}
+                          className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none">
+                          <option>Mobile</option><option>Home</option><option>Office</option>
+                          <option>WhatsApp</option><option>Other</option>
+                        </select>
+                        <button type="button" onClick={() => removeListField("phoneNumbers", idx)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Emails */}
+                <div className="border-t border-gray-200 pt-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Emails</h4>
+                    <button type="button" onClick={() => addListField("emails", { email_address: "", email_type: "Personal" })}
+                      className="text-xs font-semibold text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                      <Plus size={14} /> Add Email
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {formData.emails.map((e, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input type="text" placeholder="email@domain.com" value={e.email_address}
+                          onChange={ev => updateListField("emails", idx, "email_address", ev.target.value)}
+                          className={`flex-1 ${inputCls}`} />
+                        <select value={e.email_type}
+                          onChange={ev => updateListField("emails", idx, "email_type", ev.target.value)}
+                          className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none">
+                          <option>Personal</option><option>Office</option>
+                          <option>Home</option><option>Other</option>
+                        </select>
+                        <button type="button" onClick={() => removeListField("emails", idx)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Addresses */}
+                <div className="border-t border-gray-200 pt-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Addresses</h4>
+                    <button type="button" onClick={() => addListField("addresses", { address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" })}
+                      className="text-xs font-semibold text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                      <Plus size={14} /> Add Address
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {formData.addresses.map((a, idx) => (
+                      <div key={idx} className="border border-gray-200 bg-gray-50 p-4 rounded-lg relative space-y-3">
+                        <button type="button" onClick={() => removeListField("addresses", idx)}
+                          className="absolute top-3 right-3 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 size={13} />
+                        </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <input type="text" placeholder="Address Line 1" value={a.address_line1}
+                            onChange={e => updateListField("addresses", idx, "address_line1", e.target.value)}
+                            className={inputCls} />
+                          <input type="text" placeholder="Address Line 2 (Optional)" value={a.address_line2}
+                            onChange={e => updateListField("addresses", idx, "address_line2", e.target.value)}
+                            className={inputCls} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                          <input type="text" placeholder="City" value={a.city}
+                            onChange={e => updateListField("addresses", idx, "city", e.target.value)} className={inputCls} />
+                          <input type="text" placeholder="State" value={a.state}
+                            onChange={e => updateListField("addresses", idx, "state", e.target.value)} className={inputCls} />
+                          <input type="text" placeholder="Country" value={a.country}
+                            onChange={e => updateListField("addresses", idx, "country", e.target.value)} className={inputCls} />
+                          <input type="text" placeholder="Postal" value={a.postal_code}
+                            onChange={e => updateListField("addresses", idx, "postal_code", e.target.value)} className={inputCls} />
+                          <select value={a.address_type}
+                            onChange={e => updateListField("addresses", idx, "address_type", e.target.value)}
+                            className={inputCls}>
+                            <option>Home</option><option>Office</option>
+                            <option>Mailing</option><option>Other</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Socials */}
+                <div className="border-t border-gray-200 pt-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Social Media</h4>
+                    <button type="button" onClick={() => addListField("socials", { platform: "LinkedIn", url: "" })}
+                      className="text-xs font-semibold text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                      <Plus size={14} /> Add Platform
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {formData.socials.map((s, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <select value={s.platform}
+                          onChange={e => updateListField("socials", idx, "platform", e.target.value)}
+                          className="w-32 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none">
+                          <option>LinkedIn</option><option>Facebook</option>
+                          <option>Twitter</option><option>Instagram</option><option>Other</option>
+                        </select>
+                        <input type="text" placeholder="Profile URL" value={s.url}
+                          onChange={e => updateListField("socials", idx, "url", e.target.value)}
+                          className={`flex-1 ${inputCls}`} />
+                        <button type="button" onClick={() => removeListField("socials", idx)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                  <button type="button" onClick={() => setIsModalOpen(false)}
+                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm transition">
+                    Cancel
+                  </button>
+                  <button type="submit"
+                    className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-sm transition shadow-md shadow-orange-200">
+                    {selectedContact ? "Update Contact" : "Save Contact"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── MERGE MODAL ── */}
+      <AnimatePresence>
+        {isMergeOpen && activeDuplicatePair && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" /> Duplicate Merge Resolution
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Merging Source into Master. Relational records (phones, emails, addresses) aggregate automatically.
+                  </p>
+                </div>
+                <button onClick={() => setIsMergeOpen(false)} className="text-gray-500 hover:text-gray-700">
+                  <X size={22} />
+                </button>
+              </div>
+
+              <div className="p-6">
+                {/* Side-by-side comparison */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {/* Master */}
+                  <div className="border border-green-200 bg-green-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <UserCheck className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-bold text-green-800 uppercase tracking-wider">Master (Keep)</span>
+                    </div>
+                    <div className="space-y-2">
+                      {[["First Name", "first_name"], ["Last Name", "last_name"], ["CNIC", "cnic"], ["Gender", "gender"], ["DOB", "dob"]].map(([label, field]) => (
+                        <div key={field} className="flex justify-between items-center py-1.5 border-b border-green-100 last:border-0">
+                          <span className="text-xs text-gray-500 uppercase font-semibold">{label}</span>
+                          <span className="text-sm font-medium text-gray-800">
+                            {field === "dob" && activeDuplicatePair.master[field]
+                              ? activeDuplicatePair.master[field].split("T")[0]
+                              : activeDuplicatePair.master[field] || "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Source */}
+                  <div className="border border-red-200 bg-red-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <span className="text-sm font-bold text-red-800 uppercase tracking-wider">Source (Will be Deleted)</span>
+                    </div>
+                    <div className="space-y-2">
+                      {[["First Name", "first_name"], ["Last Name", "last_name"], ["CNIC", "cnic"], ["Gender", "gender"], ["DOB", "dob"]].map(([label, field]) => (
+                        <div key={field} className="flex justify-between items-center py-1.5 border-b border-red-100 last:border-0">
+                          <span className="text-xs text-gray-500 uppercase font-semibold">{label}</span>
+                          <span className="text-sm font-medium text-gray-800">
+                            {field === "dob" && activeDuplicatePair.source[field]
+                              ? activeDuplicatePair.source[field].split("T")[0]
+                              : activeDuplicatePair.source[field] || "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conflict Resolution */}
+                <div className="border border-gray-200 rounded-lg p-4 mb-6 bg-gray-50">
+                  <h4 className="text-sm font-bold text-orange-500 uppercase tracking-wider mb-3">Field Conflict Resolution</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {["first_name", "last_name", "cnic", "gender", "dob"].map(field => (
+                      <div key={field} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                        <span className="text-xs font-semibold text-gray-600 uppercase">{field.replace("_", " ")}</span>
+                        <div className="flex gap-2">
+                          <button type="button"
+                            onClick={() => setMergeConflictChoices(prev => ({ ...prev, [field]: "master" }))}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                              mergeConflictChoices[field] === "master"
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                            }`}>
+                            Use Master
+                          </button>
+                          <button type="button"
+                            onClick={() => setMergeConflictChoices(prev => ({ ...prev, [field]: "source" }))}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                              mergeConflictChoices[field] === "source"
+                                ? "bg-amber-500 text-white"
+                                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                            }`}>
+                            Use Source
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button onClick={() => setIsMergeOpen(false)}
+                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm transition">
+                    Cancel
+                  </button>
+                  <button onClick={handleMergeSubmit}
+                    className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-sm transition shadow-md shadow-orange-200">
+                    Execute Merge
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default Contacts;
