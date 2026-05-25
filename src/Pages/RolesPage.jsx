@@ -15,6 +15,10 @@ const RolesPage = () => {
   const [description, setDescription] = useState("");
   const [newPages, setNewPages] = useState([]); // page keys ticked when creating a new role
   const [creating, setCreating] = useState(false);
+  // Optional login credentials: when provided, an HR account is also created
+  // and assigned to this role so the user can log in with these credentials.
+  const [loginEmail, setLoginEmail] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
   const [openRoleId, setOpenRoleId] = useState(null); // which role's pages panel is open
   const [draftPages, setDraftPages] = useState({}); // roleId -> string[]
   const [savingId, setSavingId] = useState(null);
@@ -32,6 +36,8 @@ const RolesPage = () => {
       ]);
       setRoles(r.data.roles || []);
       setUsers(u.data.users || []);
+      // Tell the sidebar to refresh its custom-roles dropdown.
+      window.dispatchEvent(new CustomEvent("roles-updated"));
     } catch (e) {
       console.error(e);
     } finally {
@@ -43,14 +49,38 @@ const RolesPage = () => {
 
   const createRole = async () => {
     if (!name.trim()) return;
+    // Validate optional login fields together: either both empty or both filled.
+    if (loginEmail.trim() && !tempPassword.trim()) { alert("Password is required when login email is provided."); return; }
+    if (tempPassword.trim() && !loginEmail.trim()) { alert("Login email is required when password is provided."); return; }
+    if (tempPassword.trim() && tempPassword.length < 8) { alert("Temporary password must be at least 8 characters."); return; }
+
     setCreating(true);
     try {
-      await axios.post(`${API}roles`, { name, description, allowed_pages: newPages });
+      // 1) Create the role.
+      const res = await axios.post(`${API}roles`, { name, description, allowed_pages: newPages });
+      const roleId = res?.data?.role?.id;
+
+      // 2) Optional: create an HR login account and assign this role to it.
+      if (roleId && loginEmail.trim() && tempPassword.trim()) {
+        try {
+          const hrRes = await axios.post(`${API}auth/create-hr`, { email: loginEmail.trim(), password: tempPassword });
+          const hrId = hrRes?.data?.hr?.id;
+          if (!hrId) throw new Error("HR account ID not returned from server.");
+          // Don't swallow the assign error — if this fails, the user would
+          // log in as plain HR and see default HR pages (the exact bug we want to avoid).
+          const assignRes = await axios.put(`${API}roles/assign/hr/${hrId}`, { custom_role_id: roleId });
+          if (!assignRes?.data) throw new Error("Role assignment returned empty response.");
+          alert(`Role "${name}" created with its own login.\n\nEmail: ${loginEmail}\nTemporary password: ${tempPassword}\n\nWhen this user signs in, they'll only see the pages assigned to "${name}" — not HR's default sidebar.\n\nShare these credentials and ask the user to change the password on first login.`);
+        } catch (hrErr) {
+          alert(`⚠️ Role created, but the login could not be linked to the role: ${hrErr.response?.data?.message || hrErr.message}\n\nThis means the user would log in as plain HR and see all HR pages. Please restart the backend and try again, or assign the role manually from the "Assign role to user" table below.`);
+        }
+      }
+
       setName(""); setDescription(""); setNewPages([]);
+      setLoginEmail(""); setTempPassword("");
     } catch (e) {
       alert(e.response?.data?.message || "Failed to create role");
     } finally {
-      // Always refresh — useful when the role already existed silently
       await loadAll();
       setCreating(false);
     }
@@ -130,6 +160,33 @@ const RolesPage = () => {
             <Plus size={14} /> {creating ? "Adding…" : "Add role"}
           </button>
         </div>
+        {/* Optional login credentials — for this ROLE (not HR) */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3">
+          <p className="text-xs font-semibold text-emerald-800 uppercase mb-2">
+            Role login (optional) — set sign-in credentials for users of this role
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input
+              type="email"
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              placeholder="Role email (e.g. lead@company.com)"
+              className="border border-emerald-300 rounded px-3 py-2 text-sm bg-white"
+            />
+            <input
+              type="text"
+              value={tempPassword}
+              onChange={(e) => setTempPassword(e.target.value)}
+              placeholder="Temporary password (min 8 chars)"
+              className="border border-emerald-300 rounded px-3 py-2 text-sm bg-white font-mono"
+            />
+          </div>
+          <p className="text-[10px] text-emerald-700 mt-1">
+            Leave both empty to create a role without sign-in. If filled, the user
+            logs in with these credentials and sees only the pages ticked below — not HR's defaults.
+          </p>
+        </div>
+
         <p className="text-xs font-semibold text-gray-700 uppercase mb-2">Pages this role can access</p>
         <PageCheckboxGrid
           selected={newPages}

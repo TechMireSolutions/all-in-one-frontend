@@ -267,8 +267,8 @@ const RegisterUser = () => {
   const [step, setStep] = useState(1);
   const [progress, setProgress] = useState(0);
   const [popupMessage, setPopupMessage] = useState(null);
-  const [role, setRole] = useState(null);
-  const [isRoleSelectionModalOpen, setIsRoleSelectionModalOpen] = useState(true);
+  const [role, setRole] = useState("employee");
+  const [isRoleSelectionModalOpen, setIsRoleSelectionModalOpen] = useState(false);
   const [isHrModalOpen, setIsHrModalOpen] = useState(false);
   const [hrList, setHrList] = useState([]);
   const [passwordError, setPasswordError] = useState(null);
@@ -914,9 +914,20 @@ const RegisterUser = () => {
           transition={{ duration: 0.5 }}
           className="container mx-auto max-w-2xl"
         >
-          <h2 className="text-2xl font-bold mb-6 flex items-center text-gray-800">
-            <User size={24} className="mr-2 text-orange-500" /> Register Employee
-          </h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold flex items-center text-gray-800">
+              <User size={24} className="mr-2 text-orange-500" /> Register Employee
+            </h2>
+            <motion.button
+              type="button"
+              onClick={() => setIsHrModalOpen(true)}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-orange-300 text-orange-600 hover:bg-orange-50 text-sm font-semibold rounded-lg shadow-sm"
+            >
+              <Users size={14} /> Create HR
+            </motion.button>
+          </div>
 
           {error && !popupMessage && (
             <p className="text-red-500 mb-4 text-sm">{error}</p>
@@ -1640,13 +1651,7 @@ const RegisterUser = () => {
         </motion.div>
       )}
 
-      <RoleSelectionModal
-        isOpen={isRoleSelectionModalOpen}
-        onSelectRole={handleRoleSelect}
-        onClose={() => setIsRoleSelectionModalOpen(false)}
-        onPasswordSubmit={handlePasswordSubmit}
-        passwordError={passwordError}
-      />
+      {/* Select Action modal removed — Create HR is now a button inside the Register Employee page. */}
 
       <HrManagementModal
         isOpen={isHrModalOpen}

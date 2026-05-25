@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import UploadPage from "./Pages/UploadPage";
 import ViewDataPage from "./Pages/ViewDataPage";
 import RegisterUser from "./Pages/RegisterUser";
@@ -58,6 +58,32 @@ const Layout = ({ children }) => {
   );
 };
 
+// Landing route for HR users. If the user is linked to a custom role with
+// an explicit allowed_pages list, redirect them to the first allowed page.
+// If the role has no pages assigned, show a friendly access-denied screen.
+// Plain HR (no custom role) falls back to the default Users page.
+const HrLanding = () => {
+  const { user } = useAuthStore();
+  const allowedPages = Array.isArray(user?.allowedPages) ? user.allowedPages : null;
+  if (allowedPages !== null) {
+    if (allowedPages.length === 0) {
+      const roleName = user?.customRole?.name || "Custom role";
+      return (
+        <div className="flex flex-col items-center justify-center h-screen px-6 text-center">
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">No pages assigned</h2>
+          <p className="text-gray-600 max-w-md">
+            You're signed in as <strong>{roleName}</strong>, but no pages have been granted to this role yet.
+            Please ask the Super Admin to assign some pages from the Roles page.
+          </p>
+        </div>
+      );
+    }
+    return <Navigate to={allowedPages[0]} replace />;
+  }
+  // Plain HR — no custom role limits.
+  return <AllRegisteredUsers />;
+};
+
 // ProtectedRoute component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, role } = useAuthStore();
@@ -101,7 +127,7 @@ const App = () => {
             <>
               <Route path="/view" element={<ViewDataPage />} />
               <Route path="/policies" element={<PolicyPage />} />
-              <Route path="/techmire-academy" element={<TechmireAcademy />} />
+              <Route path="/techmire-academy" element={<ProtectedRoute allowedRoles={["__locked__"]}><TechmireAcademy /></ProtectedRoute>} />
               <Route path="/course-settings/:course" element={<CourseSettings />} />
               <Route path="/course/:course" element={<CourseView />} />
               <Route path="/quiz/:contentId" element={<QuizPage />} />
@@ -144,8 +170,33 @@ const App = () => {
                   <Route path="/ex-employees"  element={<ProtectedRoute allowedRoles={["hr"]}><ExEmployeePage /></ProtectedRoute>} />
                   <Route path="/students"      element={<ProtectedRoute allowedRoles={["hr"]}><StudentManagement /></ProtectedRoute>} />
                   <Route path="/ojt"           element={<ProtectedRoute allowedRoles={["hr"]}><OJTManagement /></ProtectedRoute>} />
-                  <Route path="/"              element={<AllRegisteredUsers />} />
-                  <Route path="*"              element={<AllRegisteredUsers />} />
+                  <Route path="/permissions"   element={<ProtectedRoute allowedRoles={["hr"]}><PermissionsPage /></ProtectedRoute>} />
+                  <Route path="/roles"         element={<ProtectedRoute allowedRoles={["hr"]}><RolesPage /></ProtectedRoute>} />
+                  <Route path="/"              element={<HrLanding />} />
+                  <Route path="*"              element={<HrLanding />} />
+                </>
+              )}
+
+              {/* Custom-role login — has its own routes; ProtectedRoute
+                  guards every path by user.allowedPages. No HR fallback. */}
+              {role?.toLowerCase() === "role" && (
+                <>
+                  <Route path="/contacts"      element={<ProtectedRoute allowedRoles={["role"]}><Contacts /></ProtectedRoute>} />
+                  <Route path="/users"         element={<ProtectedRoute allowedRoles={["role"]}><AllRegisteredUsers /></ProtectedRoute>} />
+                  <Route path="/accounts"      element={<ProtectedRoute allowedRoles={["role"]}><Accounts /></ProtectedRoute>} />
+                  <Route path="/uploadfile"    element={<ProtectedRoute allowedRoles={["role"]}><UploadPage /></ProtectedRoute>} />
+                  <Route path="/registerusers" element={<ProtectedRoute allowedRoles={["role"]}><UserList /></ProtectedRoute>} />
+                  <Route path="/ex-employees"  element={<ProtectedRoute allowedRoles={["role"]}><ExEmployeePage /></ProtectedRoute>} />
+                  <Route path="/students"      element={<ProtectedRoute allowedRoles={["role"]}><StudentManagement /></ProtectedRoute>} />
+                  <Route path="/ojt"           element={<ProtectedRoute allowedRoles={["role"]}><OJTManagement /></ProtectedRoute>} />
+                  <Route path="/view"          element={<ProtectedRoute allowedRoles={["role"]}><ViewDataPage /></ProtectedRoute>} />
+                  <Route path="/policies"      element={<ProtectedRoute allowedRoles={["role"]}><PolicyPage /></ProtectedRoute>} />
+                  <Route path="/activities"    element={<ProtectedRoute allowedRoles={["role"]}><ActivitiesPage /></ProtectedRoute>} />
+                  <Route path="/profile"       element={<ProtectedRoute allowedRoles={["role"]}><ProfilePage /></ProtectedRoute>} />
+                  <Route path="/permissions"   element={<ProtectedRoute allowedRoles={["role"]}><PermissionsPage /></ProtectedRoute>} />
+                  <Route path="/roles"         element={<ProtectedRoute allowedRoles={["role"]}><RolesPage /></ProtectedRoute>} />
+                  <Route path="/"              element={<HrLanding />} />
+                  <Route path="*"              element={<HrLanding />} />
                 </>
               )}
 

@@ -71,8 +71,13 @@ export const useAuthStore = create((set) => ({
               has_disease: response.data.user.has_disease,
               disease_description: response.data.user.disease_description,
             }
-          : resolvedRole === 'hr'
-          ? { role: 'hr', email: response.data.user.email, allowedPages: response.data.user.allowedPages ?? null }
+          : resolvedRole === 'hr' || resolvedRole === 'role'
+          ? {
+              role: resolvedRole,
+              email: response.data.user.email,
+              allowedPages: response.data.user.allowedPages ?? null,
+              customRole: response.data.user.customRole || null,
+            }
           : { role: 'superadmin' }; // Super Admin
 
       // Ensure allowedPages flows through for non-hr/non-superadmin users too

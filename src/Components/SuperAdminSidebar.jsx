@@ -1,12 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "../Store/authStore";
+
+const API = import.meta.env.VITE_API_BASE_URL;
 import logo from "../assets/TMS-LOGO.webp";
 import {
   Upload, Eye, UserPlus, Users, DollarSign, UserX,
   GraduationCap, Briefcase, FileText, Layers, User,
-  LayoutDashboard, LogOut, Menu, X, ChevronLeft, ChevronRight, ChevronDown, Contact, Shield, BookOpen,
+  LayoutDashboard, LogOut, Menu, X, ChevronLeft, ChevronRight, ChevronDown, Contact, Shield, BookOpen, Lock,
 } from "lucide-react";
 
 // ── Nav config (groups + direct links) ──────────────────────────────────────
@@ -53,7 +56,10 @@ const navConfig = {
       path: "/techmire-academy",
       label: "Techmire Academy",
       icon: BookOpen,
+      // Visible to everyone, but only Super Admin can actually enter
+      // (route is protected). Non-Super-Admin sees a lock icon.
       roles: ["superadmin", "hr", "employee", "ojt", "student"],
+      lockedFor: ["superadmin", "hr", "employee", "ojt", "student"],
     },
   ],
 };
@@ -72,6 +78,24 @@ const SuperAdminSidebar = () => {
   const activeRole = role?.toLowerCase();
   const allowedPages = Array.isArray(user?.allowedPages) ? user.allowedPages : null;
 
+  // Fetch the dynamic list of custom roles so the sidebar can show each one
+  // as a sub-item under "Roles". Re-fetched whenever the sidebar mounts.
+  const [customRoles, setCustomRoles] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      axios.get(`${API}roles`).then((r) => {
+        if (alive) setCustomRoles(r.data.roles || []);
+      }).catch(() => {});
+    };
+    load();
+    // Listen for a "roles-updated" event from the Roles page so creating a new
+    // role updates the sidebar without a full page reload.
+    const handler = () => load();
+    window.addEventListener("roles-updated", handler);
+    return () => { alive = false; window.removeEventListener("roles-updated", handler); };
+  }, []);
+
   // Super Admin sees everything. For others, first filter by role, then
   // (if a per-user allowedPages list is set) further restrict to those paths.
   const isPathAllowed = (path) => {
@@ -80,9 +104,38 @@ const SuperAdminSidebar = () => {
     return allowedPages.includes(path);
   };
 
+  // Custom-role users see only the pages in their allowedPages list —
+  // ignore the menu item's hard-coded roles array.
+  const passesRoleFilter = (item) => {
+    if (activeRole === "role") {
+      if (!Array.isArray(allowedPages)) return false;
+      if (item.children) {
+        return item.children.some((c) => allowedPages.includes(c.path));
+      }
+      return allowedPages.includes(item.path);
+    }
+    return item.roles?.includes(activeRole);
+  };
+
+  // Inject custom roles as children under the "Roles" menu entry.
   const filteredItems = allItems
-    .filter((item) => item.roles?.includes(activeRole))
+    .filter(passesRoleFilter)
     .map((item) => {
+      // Convert the flat "Roles" link into a group when there are custom roles.
+      if (item.path === "/roles" && customRoles.length > 0) {
+        return {
+          ...item,
+          children: [
+            { path: "/roles", label: "Manage roles", icon: Shield },
+            ...customRoles.map((r) => ({
+              path: `/roles?role=${r.id}`,
+              label: r.name,
+              icon: Shield,
+              _customRole: true,
+            })),
+          ],
+        };
+      }
       if (item.children) {
         const kids = item.children.filter((c) => c.isExternal || isPathAllowed(c.path));
         return kids.length ? { ...item, children: kids } : null;
@@ -125,14 +178,21 @@ const SuperAdminSidebar = () => {
         </a>
       );
     }
+    const isLocked = Array.isArray(item.lockedFor) && item.lockedFor.includes(activeRole);
     return (
       <NavLink
-        to={item.path}
-        onClick={() => setMobileOpen(false)}
+        to={isLocked ? "#" : item.path}
+        onClick={(e) => {
+          if (isLocked) { e.preventDefault(); return; }
+          setMobileOpen(false);
+        }}
+        title={isLocked ? "Locked — Super Admin only" : undefined}
         className={({ isActive }) =>
           `flex items-center gap-3 py-2.5 rounded-xl transition-all duration-200 group
           ${indent ? "px-3 mx-3" : "px-4 mx-2"} mb-0.5
-          ${isActive
+          ${isLocked
+            ? "text-gray-500 cursor-not-allowed opacity-70"
+            : isActive
             ? "bg-orange-500 text-white shadow-lg shadow-orange-500/30"
             : "text-gray-300 hover:bg-white/10 hover:text-white"
           }`
@@ -143,7 +203,7 @@ const SuperAdminSidebar = () => {
             {item.icon && (
               <item.icon
                 size={16}
-                className={`flex-shrink-0 ${isActive ? "text-white" : "text-gray-400 group-hover:text-white"}`}
+                className={`flex-shrink-0 ${isLocked ? "text-gray-500" : isActive ? "text-white" : "text-gray-400 group-hover:text-white"}`}
               />
             )}
             <AnimatePresence>
@@ -153,12 +213,15 @@ const SuperAdminSidebar = () => {
                   animate={{ opacity: 1, width: "auto" }}
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="text-sm font-medium overflow-hidden whitespace-nowrap"
+                  className="text-sm font-medium overflow-hidden whitespace-nowrap flex-1"
                 >
                   {item.label}
                 </motion.span>
               )}
             </AnimatePresence>
+            {isLocked && !collapsed && (
+              <Lock size={12} className="text-gray-400 flex-shrink-0" />
+            )}
           </>
         )}
       </NavLink>
@@ -250,7 +313,11 @@ const SuperAdminSidebar = () => {
             >
               <p className="text-white font-bold text-sm leading-tight">Techmire Solutions</p>
               <p className="text-orange-400 text-xs capitalize">
-                {role === "superadmin" ? "Super Admin" : role}
+                {user?.customRole?.name
+                  ? user.customRole.name
+                  : role === "superadmin"
+                  ? "Super Admin"
+                  : role}
               </p>
             </motion.div>
           )}
