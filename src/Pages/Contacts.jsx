@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Plus, Grid, List, MapPin, Check, Phone, Mail, User, Activity,
   AlertTriangle, X, Upload, Trash2, Edit2, RotateCcw, UserCheck, ShieldAlert,
-  Trello, MessageCircle, Send, Users as UsersIcon,
 } from "lucide-react";
 
 const Contacts = () => {
@@ -20,31 +19,6 @@ const Contacts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState("contacts");
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [waOpen, setWaOpen] = useState(false);
-  const [waBody, setWaBody] = useState("Assalamu alaikum {{name}} 👋, this is Techmire Solutions reaching out. We'd love to share more about our programs.");
-  const [genderFilter, setGenderFilter] = useState("all");
-  const [activeFormTab, setActiveFormTab] = useState("identity");
-  const [emergency, setEmergency] = useState({ name: "", phone: "", relation: "Parent" });
-  const [family, setFamily] = useState({
-    father_name: "", father_phone: "", father_email: "",
-    mother_name: "", mother_phone: "", mother_email: "",
-  });
-  const [education, setEducation] = useState({
-    degree: "", institute: "", grade: "", year: "", current_study: "",
-  });
-  const [experience, setExperience] = useState({
-    teach_subjects: "", teach_institute: "", teach_contact: "",
-    position: "", organization: "", skills: "",
-  });
-  const [office, setOffice] = useState({
-    employee_id: "", registration_date: "", joining_date: "",
-    post_applied_for: "", check_in_time: "", check_out_time: "",
-    salary_cap: "", description: "",
-  });
-  const [health, setHealth] = useState({
-    any_disease: "No", disease_details: "",
-  });
 
   const [duplicatesMap, setDuplicatesMap] = useState([]);
   const [activeDuplicatePair, setActiveDuplicatePair] = useState(null);
@@ -122,9 +96,7 @@ const Contacts = () => {
     const lastDigit = parseInt(digits[12], 10);
     if (gender === "Male" && lastDigit % 2 === 0) return "Last digit of CNIC for Male must be odd.";
     if (gender === "Female" && lastDigit % 2 !== 0) return "Last digit of CNIC for Female must be even.";
-    // Note: NADRA CNICs do not use a Luhn checksum — the previous Luhn check
-    // wrongly rejected valid real-world CNICs. We only enforce the format
-    // (XXXXX-XXXXXXX-X) and the gender parity rule on the last digit.
+    if (!checkCnicLuhn(digits)) return "CNIC failed Luhn algorithm checksum verification.";
     return null;
   };
 
@@ -144,26 +116,12 @@ const Contacts = () => {
         errors[`phone_${idx}`] = "Invalid E.164 phone format.";
     });
     setFormErrors(errors);
-    // Return the errors object too (not just bool) so callers can inspect it
-    // synchronously without waiting for React state to flush.
-    return { ok: Object.keys(errors).length === 0, errors };
+    return Object.keys(errors).length === 0;
   };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    const { ok, errors } = validateForm();
-    if (!ok) {
-      const firstErrTab = (() => {
-        if (errors.first_name || errors.last_name || errors.cnic || errors.dob) return "identity";
-        if (Object.keys(errors).some((k) => k.startsWith("phone_"))) return "phones";
-        if (Object.keys(errors).some((k) => k.startsWith("email_"))) return "emails";
-        return "identity";
-      })();
-      setActiveFormTab(firstErrTab);
-      const firstMsg = Object.values(errors)[0];
-      showToast(firstMsg || "Please check errors in the form.", "error");
-      return;
-    }
+    if (!validateForm()) { showToast("Please check errors in the form.", "error"); return; }
 
     const payload = new FormData();
     payload.append("first_name", formData.first_name);
@@ -182,12 +140,6 @@ const Contacts = () => {
     payload.append("emails", JSON.stringify(finalEmails));
     payload.append("addresses", JSON.stringify(finalAddresses));
     payload.append("socials", JSON.stringify(finalSocials));
-    payload.append("family",     JSON.stringify(family));
-    payload.append("education",  JSON.stringify(education));
-    payload.append("experience", JSON.stringify(experience));
-    payload.append("office",     JSON.stringify(office));
-    payload.append("health",     JSON.stringify(health));
-    payload.append("emergency",  JSON.stringify(emergency));
     if (imageFile) payload.append("profile_picture", imageFile);
 
     let res;
@@ -223,18 +175,10 @@ const Contacts = () => {
     setFormErrors({});
   };
 
-  const openAddModal = () => { setSelectedContact(null); resetForm(); setActiveFormTab("identity"); setIsModalOpen(true); };
+  const openAddModal = () => { setSelectedContact(null); resetForm(); setIsModalOpen(true); };
 
   const openEditModal = (c) => {
     setSelectedContact(c);
-    setActiveFormTab("identity");
-    setFormErrors({});
-    setFamily(c.family     || { father_name: "", father_phone: "", father_email: "", mother_name: "", mother_phone: "", mother_email: "" });
-    setEducation(c.education || { degree: "", institute: "", grade: "", year: "", current_study: "" });
-    setExperience(c.experience || { teach_subjects: "", teach_institute: "", teach_contact: "", position: "", organization: "", skills: "" });
-    setOffice(c.office       || { employee_id: "", registration_date: "", joining_date: "", post_applied_for: "", check_in_time: "", check_out_time: "", salary_cap: "", description: "" });
-    setHealth(c.health       || { any_disease: "No", disease_details: "" });
-    setEmergency(c.emergency || { name: "", phone: "", relation: "Parent" });
     setFormData({
       first_name: c.first_name || "", last_name: c.last_name || "",
       cnic: c.cnic || "", gender: c.gender || "Male",
@@ -277,7 +221,6 @@ const Contacts = () => {
   };
 
   const filteredContacts = contacts.filter(c => {
-    if (genderFilter !== "all" && c.gender !== genderFilter) return false;
     const full = `${c.first_name} ${c.last_name}`.toLowerCase();
     const query = searchQuery.toLowerCase();
     return (
@@ -391,41 +334,21 @@ const Contacts = () => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={genderFilter}
-                onChange={(e) => setGenderFilter(e.target.value)}
-                className="border border-gray-300 bg-white rounded-lg px-2 py-1.5 text-sm"
-                title="Filter by gender"
+            <div className="flex items-center gap-1 border border-gray-300 bg-white p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded-md transition ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
+                title="List view"
               >
-                <option value="all">All genders</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-              <div className="flex items-center gap-1 border border-gray-300 bg-white p-1 rounded-lg">
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`p-2 rounded-md transition ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
-                  title="List view"
-                >
-                  <List size={16} />
-                </button>
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`p-2 rounded-md transition ${viewMode === "grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
-                  title="Grid view"
-                >
-                  <Grid size={16} />
-                </button>
-                <button
-                  onClick={() => setViewMode("kanban")}
-                  className={`p-2 rounded-md transition ${viewMode === "kanban" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
-                  title="Kanban view"
-                >
-                  <Trello size={16} />
-                </button>
-              </div>
+                <List size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-2 rounded-md transition ${viewMode === "grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-600"}`}
+                title="Grid view"
+              >
+                <Grid size={16} />
+              </button>
             </div>
           </div>
 
@@ -448,13 +371,6 @@ const Contacts = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-[oklch(0.67_0.19_42.13)]">
                   <tr>
-                    <th className="px-3 py-3 text-left">
-                      <input
-                        type="checkbox"
-                        checked={filteredContacts.length > 0 && filteredContacts.every((c) => selectedIds.includes(c.id))}
-                        onChange={() => setSelectedIds((sel) => sel.length === filteredContacts.length ? [] : filteredContacts.map((c) => c.id))}
-                      />
-                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">CNIC</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">Gender</th>
@@ -475,15 +391,8 @@ const Contacts = () => {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0 }}
-                          className={`hover:bg-gray-50 ${selectedIds.includes(c.id) ? "bg-orange-50/40" : ""}`}
+                          className="hover:bg-gray-50"
                         >
-                          <td className="px-3 py-4">
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.includes(c.id)}
-                              onChange={() => setSelectedIds((sel) => sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id])}
-                            />
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-3">
                               {c.profile_picture ? (
@@ -539,54 +448,6 @@ const Contacts = () => {
                 </tbody>
               </table>
             </motion.div>
-          ) : viewMode === "kanban" ? (
-            /* Kanban View — grouped by gender */
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { key: "Male",   label: "Male",   dot: "bg-sky-500",     bg: "bg-sky-50",     border: "border-sky-200" },
-                { key: "Female", label: "Female", dot: "bg-rose-500",    bg: "bg-rose-50",    border: "border-rose-200" },
-                { key: "Other",  label: "Other",  dot: "bg-emerald-500", bg: "bg-emerald-50", border: "border-emerald-200" },
-              ].map((col) => {
-                const items = filteredContacts.filter((c) => (c.gender || "Other") === col.key);
-                return (
-                  <div key={col.key} className={`rounded-xl border ${col.border} ${col.bg} p-3`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                      <h3 className="font-semibold text-gray-800 text-sm">{col.label}</h3>
-                      <span className="ml-auto text-[11px] text-gray-500">{items.length}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {items.map((c, i) => (
-                        <motion.button
-                          key={c.id}
-                          onClick={() => openEditModal(c)}
-                          initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.02 }}
-                          className="w-full text-left bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md hover:border-orange-300 transition"
-                        >
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.includes(c.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={() => setSelectedIds((sel) => sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id])}
-                            />
-                            <p className="font-medium text-gray-800 text-sm flex-1">{c.first_name} {c.last_name}</p>
-                            {c.is_syed && <span className="text-[9px] bg-orange-500 text-white font-bold px-1.5 py-0.5 rounded uppercase">Syed</span>}
-                          </div>
-                          <div className="mt-1.5 space-y-1 text-[11px] text-gray-500 ml-6">
-                            {c.phoneNumbers?.[0]?.phone_number && <p className="flex items-center gap-1.5"><Phone size={10} /> {c.phoneNumbers[0].phone_number}</p>}
-                            {c.emails?.[0]?.email_address && <p className="flex items-center gap-1.5 truncate"><Mail size={10} /> {c.emails[0].email_address}</p>}
-                            {c.addresses?.[0]?.city && <p className="flex items-center gap-1.5"><MapPin size={10} /> {c.addresses[0].city}</p>}
-                          </div>
-                        </motion.button>
-                      ))}
-                      {items.length === 0 && <p className="text-center text-[11px] text-gray-400 py-4">No contacts here.</p>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           ) : (
             /* Grid View */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -739,120 +600,6 @@ const Contacts = () => {
         </div>
       )}
 
-      {/* ── BULK ACTIONS FLOATING BAR ── */}
-      <AnimatePresence>
-        {selectedIds.length > 0 && (
-          <motion.div
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 30, opacity: 0 }}
-            className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 bg-gray-900 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-3"
-          >
-            <span className="text-xs flex items-center gap-1.5">
-              <UsersIcon size={12} /> {selectedIds.length} selected
-            </span>
-            <button
-              onClick={() => setWaOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"
-            >
-              <MessageCircle size={12} /> WhatsApp
-            </button>
-            <button onClick={() => setSelectedIds([])} className="text-xs text-gray-300 hover:text-white">
-              Clear
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── WHATSAPP SLIDE-UP PANEL ── */}
-      <AnimatePresence>
-        {waOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/40"
-              onClick={() => setWaOpen(false)}
-            />
-            <motion.div
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 28 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 rounded-t-2xl shadow-2xl max-h-[80vh] overflow-y-auto"
-            >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 sticky top-0 bg-white">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center">
-                    <MessageCircle size={16} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Send WhatsApp broadcast</h3>
-                    <p className="text-[11px] text-gray-500">{selectedIds.length} contact{selectedIds.length === 1 ? "" : "s"} selected</p>
-                  </div>
-                </div>
-                <button onClick={() => setWaOpen(false)} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
-              </div>
-
-              <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-xs font-semibold text-gray-700 uppercase mb-2">Templates</p>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Introduction",     body: "Assalamu alaikum {{name}} 👋, this is Techmire Solutions reaching out. We'd love to share more about our programs." },
-                      { label: "Class reminder",   body: "Reminder: {{name}}, your child's class begins at 5 PM today. JazakAllah Khair." },
-                      { label: "Payment reminder", body: "Dear {{name}}, this is a friendly reminder that the monthly fee is due. Please settle at your earliest." },
-                    ].map((t) => (
-                      <button
-                        key={t.label}
-                        onClick={() => setWaBody(t.body)}
-                        className={`w-full text-left p-2 border rounded-lg text-sm transition ${waBody === t.body ? "border-emerald-400 bg-emerald-50" : "border-gray-200 hover:bg-gray-50"}`}
-                      >
-                        <span className="block font-medium text-gray-800">{t.label}</span>
-                        <span className="block text-[11px] text-gray-500 line-clamp-2">{t.body}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-col">
-                  <p className="text-xs font-semibold text-gray-700 uppercase mb-2">Message</p>
-                  <textarea
-                    rows={8}
-                    value={waBody}
-                    onChange={(e) => setWaBody(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 outline-none"
-                    placeholder="Use {{name}} to personalize."
-                  />
-                  <p className="text-[11px] text-gray-500 mt-1">Variables: <code>{`{{name}}`}</code></p>
-
-                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 text-[11px] text-gray-600 max-h-32 overflow-y-auto">
-                    <p className="font-semibold mb-1 text-gray-700">Recipients</p>
-                    {contacts
-                      .filter((c) => selectedIds.includes(c.id))
-                      .map((c) => (
-                        <p key={c.id}>
-                          • {c.first_name} {c.last_name} —{" "}
-                          {c.phoneNumbers?.[0]?.phone_number || <span className="text-rose-500">no phone</span>}
-                        </p>
-                      ))}
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      const previewName = contacts.find((c) => c.id === selectedIds[0])?.first_name || "Friend";
-                      alert(`Broadcast queued for ${selectedIds.length} contact(s).\n\nPreview to ${previewName}:\n${waBody.replace("{{name}}", previewName)}`);
-                      setWaOpen(false);
-                      setSelectedIds([]);
-                    }}
-                    className="mt-4 self-end px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg inline-flex items-center gap-2 shadow-md"
-                  >
-                    <Send size={14} /> Send to {selectedIds.length}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
       {/* ── ADD / EDIT MODAL ── */}
       <AnimatePresence>
         {isModalOpen && (
@@ -863,82 +610,18 @@ const Contacts = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
             >
-              <div className="flex justify-between items-center px-6 pt-5 pb-3">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
                 <h3 className="text-xl font-bold text-gray-800">
-                  {selectedContact ? "Edit Contact" : "Add New Contact"}
+                  {selectedContact ? "Edit Contact Record" : "Add New Contact"}
                 </h3>
                 <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-gray-700">
                   <X size={22} />
                 </button>
               </div>
 
-              {/* Progress bar */}
-              {(() => {
-                const checks = [
-                  !!formData.first_name,
-                  !!formData.last_name,
-                  !!formData.cnic,
-                  !!formData.dob,
-                  !!(family.father_name || family.mother_name),
-                  formData.phoneNumbers.some((p) => p.phone_number),
-                  formData.emails.some((e) => e.email_address),
-                  formData.addresses.some((a) => a.address_line1),
-                  formData.socials.some((s) => s.url),
-                  !!emergency.phone,
-                ];
-                const pct = Math.round((checks.filter(Boolean).length / checks.length) * 100);
-                return (
-                  <div className="px-6">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-700 uppercase tracking-wider mb-1">
-                      <span>Progress</span><span>{pct}%</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={false}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ type: "spring", damping: 18 }}
-                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600"
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Tabs */}
-              <div className="px-6 mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
-                {[
-                  { k: "identity",   l: "Identity",   i: User },
-                  { k: "family",     l: "Family",     i: UsersIcon },
-                  { k: "phones",     l: "Phones",     i: Phone },
-                  { k: "emails",     l: "Emails",     i: Mail },
-                  { k: "addresses",  l: "Addresses",  i: MapPin },
-                  { k: "education",  l: "Education",  i: User },
-                  { k: "experience", l: "Experience", i: Activity },
-                  { k: "office",     l: "Office",     i: UserCheck },
-                  { k: "health",     l: "Health",     i: ShieldAlert },
-                  { k: "socials",    l: "Socials",    i: Activity },
-                  { k: "emergency",  l: "Emergency",  i: ShieldAlert },
-                ].map((t) => (
-                  <button
-                    key={t.k}
-                    type="button"
-                    onClick={() => setActiveFormTab(t.k)}
-                    className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition whitespace-nowrap ${
-                      activeFormTab === t.k ? "text-emerald-700" : "text-gray-500 hover:text-gray-800"
-                    }`}
-                  >
-                    <t.i size={14} />
-                    {t.l}
-                    {activeFormTab === t.k && (
-                      <motion.span layoutId="contact-form-tab" className="absolute left-2 right-2 -bottom-px h-0.5 bg-emerald-500" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
               <form onSubmit={handleFormSubmit} className="p-6 space-y-6">
-                {/* Profile Picture + Name (Identity tab) */}
-                <div className={`${activeFormTab === "identity" ? "" : "hidden"} flex flex-col md:flex-row gap-6 items-start pb-6 border-b border-gray-200`}>
+                {/* Profile Picture + Name */}
+                <div className="flex flex-col md:flex-row gap-6 items-start pb-6 border-b border-gray-200">
                   <div className="relative flex-shrink-0">
                     {imagePreview ? (
                       <img src={imagePreview} className="w-20 h-20 rounded-full object-cover border-2 border-gray-200" alt="Preview" />
@@ -979,8 +662,8 @@ const Contacts = () => {
                   </div>
                 </div>
 
-                {/* Core fields (Identity tab) */}
-                <div className={`${activeFormTab === "identity" ? "" : "hidden"} grid grid-cols-1 md:grid-cols-4 gap-4`}>
+                {/* Core fields */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className={labelCls}>Gender *</label>
                     <select value={formData.gender}
@@ -1015,7 +698,7 @@ const Contacts = () => {
                 </div>
 
                 {/* Phone Numbers */}
-                <div className={`${activeFormTab === "phones" ? "" : "hidden"} pt-2`}>
+                <div className="border-t border-gray-200 pt-5">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Phone Numbers</h4>
                     <button type="button" onClick={() => addListField("phoneNumbers", { phone_number: "", phone_type: "Mobile" })}
@@ -1045,7 +728,7 @@ const Contacts = () => {
                 </div>
 
                 {/* Emails */}
-                <div className={`${activeFormTab === "emails" ? "" : "hidden"} pt-2`}>
+                <div className="border-t border-gray-200 pt-5">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Emails</h4>
                     <button type="button" onClick={() => addListField("emails", { email_address: "", email_type: "Personal" })}
@@ -1075,7 +758,7 @@ const Contacts = () => {
                 </div>
 
                 {/* Addresses */}
-                <div className={`${activeFormTab === "addresses" ? "" : "hidden"} pt-2`}>
+                <div className="border-t border-gray-200 pt-5">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Addresses</h4>
                     <button type="button" onClick={() => addListField("addresses", { address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" })}
@@ -1120,7 +803,7 @@ const Contacts = () => {
                 </div>
 
                 {/* Socials */}
-                <div className={`${activeFormTab === "socials" ? "" : "hidden"} pt-2`}>
+                <div className="border-t border-gray-200 pt-5">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Social Media</h4>
                     <button type="button" onClick={() => addListField("socials", { platform: "LinkedIn", url: "" })}
@@ -1149,175 +832,16 @@ const Contacts = () => {
                   </div>
                 </div>
 
-                {/* Family */}
-                <div className={`${activeFormTab === "family" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <div>
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Father</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className={labelCls}>Father's Name</label>
-                        <input value={family.father_name} onChange={(e) => setFamily({ ...family, father_name: e.target.value })} className={inputCls} placeholder="e.g. Ahmed Raza" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Father's Phone</label>
-                        <input value={family.father_phone} onChange={(e) => setFamily({ ...family, father_phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Father's Email</label>
-                        <input value={family.father_email} onChange={(e) => setFamily({ ...family, father_email: e.target.value })} className={inputCls} placeholder="father@example.com" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100 pt-4">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Mother</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className={labelCls}>Mother's Name</label>
-                        <input value={family.mother_name} onChange={(e) => setFamily({ ...family, mother_name: e.target.value })} className={inputCls} placeholder="e.g. Aisha Raza" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Mother's Phone</label>
-                        <input value={family.mother_phone} onChange={(e) => setFamily({ ...family, mother_phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Mother's Email</label>
-                        <input value={family.mother_email} onChange={(e) => setFamily({ ...family, mother_email: e.target.value })} className={inputCls} placeholder="mother@example.com" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-gray-400">
-                    Family details are kept locally for now. We can persist them to the Contact model once the backend columns are added.
-                  </p>
-                </div>
-
-                {/* Education */}
-                <div className={`${activeFormTab === "education" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Last Education</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className={labelCls}>Degree</label><input value={education.degree} onChange={(e) => setEducation({ ...education, degree: e.target.value })} className={inputCls} placeholder="Enter Degree" /></div>
-                    <div><label className={labelCls}>Institute</label><input value={education.institute} onChange={(e) => setEducation({ ...education, institute: e.target.value })} className={inputCls} placeholder="Enter Institute" /></div>
-                    <div>
-                      <label className={labelCls}>Grade</label>
-                      <select value={education.grade} onChange={(e) => setEducation({ ...education, grade: e.target.value })} className={inputCls}>
-                        <option value="">Select Grade</option><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C+</option><option>C</option><option>D</option>
-                      </select>
-                    </div>
-                    <div><label className={labelCls}>Year</label><input value={education.year} onChange={(e) => setEducation({ ...education, year: e.target.value })} className={inputCls} placeholder="Enter Year" /></div>
-                    <div className="md:col-span-2"><label className={labelCls}>Current Study (Ongoing)</label><input value={education.current_study} onChange={(e) => setEducation({ ...education, current_study: e.target.value })} className={inputCls} placeholder="e.g. BSCS, MCS (if ongoing)" /></div>
-                  </div>
-                </div>
-
-                {/* Experience */}
-                <div className={`${activeFormTab === "experience" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <div>
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Past Teaching Experience (Optional)</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div><label className={labelCls}>Teaching Subjects</label><input value={experience.teach_subjects} onChange={(e) => setExperience({ ...experience, teach_subjects: e.target.value })} className={inputCls} placeholder="Enter Subjects" /></div>
-                      <div><label className={labelCls}>Teaching Institute</label><input value={experience.teach_institute} onChange={(e) => setExperience({ ...experience, teach_institute: e.target.value })} className={inputCls} placeholder="Enter Institute" /></div>
-                      <div><label className={labelCls}>Teaching Contact</label><input value={experience.teach_contact} onChange={(e) => setExperience({ ...experience, teach_contact: e.target.value })} className={inputCls} placeholder="Enter Contact (11 digits)" /></div>
-                    </div>
-                  </div>
-                  <div className="border-t border-gray-100 pt-4">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Other Experience (Optional)</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div><label className={labelCls}>Position</label><input value={experience.position} onChange={(e) => setExperience({ ...experience, position: e.target.value })} className={inputCls} placeholder="Employee" /></div>
-                      <div><label className={labelCls}>Organization</label><input value={experience.organization} onChange={(e) => setExperience({ ...experience, organization: e.target.value })} className={inputCls} placeholder="Enter Organization" /></div>
-                      <div><label className={labelCls}>Skills</label><input value={experience.skills} onChange={(e) => setExperience({ ...experience, skills: e.target.value })} className={inputCls} placeholder="e.g. Java, Python" /></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Office */}
-                <div className={`${activeFormTab === "office" ? "" : "hidden"} pt-2 space-y-3`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Office Details</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className={labelCls}>Employee ID</label><input value={office.employee_id} onChange={(e) => setOffice({ ...office, employee_id: e.target.value })} className={inputCls} placeholder="Enter Employee ID" /></div>
-                    <div><label className={labelCls}>Registration Date</label><input type="date" value={office.registration_date} onChange={(e) => setOffice({ ...office, registration_date: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Joining Date</label><input type="date" value={office.joining_date} onChange={(e) => setOffice({ ...office, joining_date: e.target.value })} className={inputCls} /></div>
-                    <div>
-                      <label className={labelCls}>Post Applied For</label>
-                      <select value={office.post_applied_for} onChange={(e) => setOffice({ ...office, post_applied_for: e.target.value })} className={inputCls}>
-                        <option value="">Select Post</option><option>Teacher</option><option>Admin</option><option>Accountant</option><option>HR</option><option>Other</option>
-                      </select>
-                    </div>
-                    <div><label className={labelCls}>Check-In Time</label><input type="time" value={office.check_in_time} onChange={(e) => setOffice({ ...office, check_in_time: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Check-Out Time</label><input type="time" value={office.check_out_time} onChange={(e) => setOffice({ ...office, check_out_time: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Salary Cap</label><input type="number" value={office.salary_cap} onChange={(e) => setOffice({ ...office, salary_cap: e.target.value })} className={inputCls} placeholder="Enter Salary Cap (e.g. 50000)" /></div>
-                    <div><label className={labelCls}>Description (Optional)</label><input value={office.description} onChange={(e) => setOffice({ ...office, description: e.target.value })} className={inputCls} placeholder="Enter Description" /></div>
-                  </div>
-                </div>
-
-                {/* Health */}
-                <div className={`${activeFormTab === "health" ? "" : "hidden"} pt-2 space-y-3`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Health Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelCls}>Any Disease?</label>
-                      <select value={health.any_disease} onChange={(e) => setHealth({ ...health, any_disease: e.target.value })} className={inputCls}>
-                        <option>No</option><option>Yes</option>
-                      </select>
-                    </div>
-                    {health.any_disease === "Yes" && (
-                      <div className="md:col-span-2"><label className={labelCls}>Details</label><textarea rows={3} value={health.disease_details} onChange={(e) => setHealth({ ...health, disease_details: e.target.value })} className={inputCls} placeholder="Describe medical conditions, allergies, medications…" /></div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Emergency */}
-                <div className={`${activeFormTab === "emergency" ? "" : "hidden"} pt-2`}>
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Emergency Contact</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">Used by staff to reach next of kin in case of urgency.</p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className={labelCls}>Contact Name</label>
-                      <input value={emergency.name} onChange={(e) => setEmergency({ ...emergency, name: e.target.value })} className={inputCls} placeholder="e.g. Ahmed Raza" />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Phone</label>
-                      <input value={emergency.phone} onChange={(e) => setEmergency({ ...emergency, phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Relation</label>
-                      <select value={emergency.relation} onChange={(e) => setEmergency({ ...emergency, relation: e.target.value })} className={inputCls}>
-                        <option>Parent</option><option>Spouse</option><option>Sibling</option><option>Guardian</option><option>Friend</option><option>Other</option>
-                      </select>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-3">
-                    Note: emergency contact data is kept locally for now. We'll persist it to the Contact model when the backend column is added.
-                  </p>
-                </div>
-
                 {/* Actions */}
-                <div className="flex justify-between items-center gap-3 pt-4 border-t border-gray-200">
-                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                    {["identity", "family", "phones", "emails", "addresses", "education", "experience", "office", "health", "socials", "emergency"].map((k, i, arr) => {
-                      const idx = arr.indexOf(activeFormTab);
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setActiveFormTab(k)}
-                          className={`w-2 h-2 rounded-full transition ${i <= idx ? "bg-emerald-500" : "bg-gray-200"}`}
-                          aria-label={`Go to ${k} tab`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex gap-3">
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                   <button type="button" onClick={() => setIsModalOpen(false)}
                     className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-sm transition">
                     Cancel
                   </button>
                   <button type="submit"
-                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl text-sm transition shadow-md shadow-emerald-200">
+                    className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-sm transition shadow-md shadow-orange-200">
                     {selectedContact ? "Update Contact" : "Save Contact"}
                   </button>
-                  </div>
                 </div>
               </form>
             </motion.div>

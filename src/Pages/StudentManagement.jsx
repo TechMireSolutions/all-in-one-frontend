@@ -78,22 +78,7 @@ const StudentManagement = () => {
 
   useEffect(() => { fetchStudents(); }, []);
 
-  // Auto-generate the next Student ID by scanning existing IDs that match
-  // STU-#### and incrementing past the highest. New entries are always sequential.
-  const nextStudentId = () => {
-    const used = students
-      .map((s) => /^STU-(\d+)$/i.exec(s.student_id || ""))
-      .filter(Boolean)
-      .map((m) => parseInt(m[1], 10));
-    const next = (used.length ? Math.max(...used) : 0) + 1;
-    return `STU-${String(next).padStart(3, "0")}`;
-  };
-
-  const openAdd = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    setForm({ ...EMPTY_FORM, student_id: nextStudentId(), joining_date: today });
-    setEditingId(null); setCourseInput(""); setShowModal(true);
-  };
+  const openAdd = () => { setForm(EMPTY_FORM); setEditingId(null); setCourseInput(""); setShowModal(true); };
   const openEdit = (s) => {
     setForm({ 
       ...s, 
@@ -262,33 +247,12 @@ const StudentManagement = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="p-5 space-y-4">
-                <ContactPicker onPick={(c) => setForm(f => ({
-                  ...f,
-                  full_name:      `${c.first_name || ""} ${c.last_name || ""}`.trim() || f.full_name,
-                  cnic:           c.cnic || f.cnic,
-                  gender:         c.gender || f.gender,
-                  dob:            c.dob ? new Date(c.dob).toISOString().slice(0, 10) : f.dob,
-                  email:          c.emails?.[0]?.email_address  || f.email,
-                  contact_number: c.phoneNumbers?.[0]?.phone_number || f.contact_number,
-                  // Pull education + office data from the contact's JSON blocks
-                  institute:        c.education?.institute  || f.institute,
-                  degree:           c.education?.degree     || f.degree,
-                  joining_date:     c.office?.joining_date  || f.joining_date,
-                  course_start_date: c.office?.registration_date || f.course_start_date,
-                  description:      c.experience?.skills    || f.description,
-                }))} />
                 {/* Row 1 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Student ID * <span className="text-emerald-600 text-[10px] uppercase ml-1">auto-generated</span></label>
-                    <input
-                      required
-                      value={form.student_id}
-                      onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
-                      readOnly
-                      title="Auto-generated based on existing records"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-orange-300"
-                    />
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Student ID *</label>
+                    <input required value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
+                      placeholder="e.g. STU-001" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
@@ -450,40 +414,6 @@ const StudentManagement = () => {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-  );
-};
-
-// Reusable picker that loads /api/contacts and auto-fills the parent form
-// from a chosen contact (Identity + first phone + first email).
-const ContactPicker = ({ onPick }) => {
-  const [contacts, setContacts] = useState([]);
-  useEffect(() => {
-    axios.get(`${API}contacts`).then((r) => setContacts(r.data.contacts || r.data || [])).catch(() => {});
-  }, []);
-  return (
-    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-      <label className="text-[11px] font-semibold text-emerald-800 uppercase block mb-1">
-        Pick from existing Contacts (auto-fills personal info)
-      </label>
-      <select
-        onChange={(e) => {
-          const c = contacts.find((x) => String(x.id) === String(e.target.value));
-          if (c) onPick(c);
-        }}
-        className="w-full border border-emerald-300 rounded px-3 py-2 bg-white text-sm"
-        defaultValue=""
-      >
-        <option value="">— Start blank or select a contact —</option>
-        {contacts.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.first_name} {c.last_name}{c.cnic ? ` · ${c.cnic}` : ""}
-          </option>
-        ))}
-      </select>
-      <p className="text-[10px] text-emerald-700 mt-1">
-        Don't see them? <a href="/contacts" className="underline">Add them in Contacts first</a>.
-      </p>
     </div>
   );
 };

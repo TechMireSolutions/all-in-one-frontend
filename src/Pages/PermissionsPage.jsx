@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { GRANTABLE_PAGES } from "../Constants/pages";
-import { Shield, Search, Save, RotateCcw } from "lucide-react";
+import { GRANTABLE_PAGES, PROJECT_TRACKER_VIEW_KEY, PROJECT_TRACKER_EDIT_KEY } from "../Constants/pages";
+import { Shield, Search, Save, RotateCcw, BarChart2 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
@@ -12,13 +12,35 @@ const TYPE_LABEL = {
   student: "Student",
 };
 
+// Project Tracker access levels
+const PT_NONE = "none";
+const PT_VIEW = "view";
+const PT_EDIT = "edit";
+
+const getProjectTrackerAccess = (pages) => {
+  if (!Array.isArray(pages)) return PT_NONE;
+  if (pages.includes(PROJECT_TRACKER_EDIT_KEY)) return PT_EDIT;
+  if (pages.includes(PROJECT_TRACKER_VIEW_KEY)) return PT_VIEW;
+  return PT_NONE;
+};
+
+const applyProjectTrackerAccess = (pages, level) => {
+  // Remove both keys first, then add the selected one
+  const cleaned = (pages || []).filter(
+    (k) => k !== PROJECT_TRACKER_EDIT_KEY && k !== PROJECT_TRACKER_VIEW_KEY
+  );
+  if (level === PT_VIEW) return [...cleaned, PROJECT_TRACKER_VIEW_KEY];
+  if (level === PT_EDIT) return [...cleaned, PROJECT_TRACKER_EDIT_KEY];
+  return cleaned;
+};
+
 const PermissionsPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
-  const [draft, setDraft] = useState(null); // array | null
+  const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
 
@@ -67,8 +89,20 @@ const PermissionsPage = () => {
     });
   };
 
+  const ptAccess = getProjectTrackerAccess(draft);
+
+  const setProjectTrackerAccess = (level) => {
+    setDraft((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      return applyProjectTrackerAccess(base, level);
+    });
+  };
+
   const useDefault = () => setDraft(null);
-  const selectAll = () => setDraft(GRANTABLE_PAGES.map((p) => p.key));
+  const selectAll = () => {
+    const allKeys = GRANTABLE_PAGES.map((p) => p.key);
+    setDraft(applyProjectTrackerAccess(allKeys, ptAccess));
+  };
 
   const save = async () => {
     if (!selected) return;
@@ -77,7 +111,6 @@ const PermissionsPage = () => {
       await axios.put(`${API}permissions/users/${selected.type}/${selected.id}`, {
         allowed_pages: draft,
       });
-      // update local cache
       setUsers((prev) =>
         prev.map((u) =>
           u.type === selected.type && u.id === selected.id
@@ -199,7 +232,7 @@ const PermissionsPage = () => {
                   <button
                     onClick={useDefault}
                     className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    title="Reset to default role access (clears custom permissions)"
+                    title="Reset to default role access"
                   >
                     <RotateCcw size={12} /> Use default
                   </button>
@@ -212,7 +245,7 @@ const PermissionsPage = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto space-y-4">
                 {draft === null ? (
                   <div className="p-4 mb-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
                     No custom permissions set — this user gets the default access for their role.
@@ -220,39 +253,76 @@ const PermissionsPage = () => {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {GRANTABLE_PAGES.map((p) => {
-                    const list = Array.isArray(draft) ? draft : [];
-                    const checked = list.includes(p.key);
-                    return (
+                {/* ── Project Progress Tracker special section ── */}
+                <div className="border border-orange-200 rounded-xl p-4 bg-orange-50/40">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart2 size={16} className="text-orange-500" />
+                    <p className="text-sm font-semibold text-gray-800">Project Progress Tracker</p>
+                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Special Access</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {[
+                      { val: PT_NONE, label: "No Access", desc: "Hidden from sidebar", color: "border-gray-300 text-gray-600" },
+                      { val: PT_VIEW, label: "View Only", desc: "Can see projects, cannot edit", color: "border-blue-400 text-blue-700 bg-blue-50" },
+                      { val: PT_EDIT, label: "View + Edit", desc: "Can add, edit, and delete", color: "border-green-400 text-green-700 bg-green-50" },
+                    ].map(({ val, label, desc, color }) => (
                       <label
-                        key={p.key}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
-                          checked
-                            ? "border-orange-300 bg-orange-50"
-                            : "border-gray-200 hover:bg-gray-50"
+                        key={val}
+                        className={`flex-1 flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition ${
+                          ptAccess === val ? color : "border-gray-200 hover:border-gray-300 bg-white"
                         }`}
                       >
                         <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => togglePage(p.key)}
-                          className="accent-orange-500"
+                          type="radio"
+                          name="pt-access"
+                          checked={ptAccess === val}
+                          onChange={() => setProjectTrackerAccess(val)}
+                          className="mt-0.5 accent-orange-500"
                         />
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-800">{p.label}</p>
-                          <p className="text-[11px] text-gray-400 truncate">{p.key}</p>
+                        <div>
+                          <p className="text-sm font-medium">{label}</p>
+                          <p className="text-xs text-gray-500">{desc}</p>
                         </div>
                       </label>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Regular pages ── */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Other Pages</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {GRANTABLE_PAGES.map((p) => {
+                      const list = Array.isArray(draft) ? draft : [];
+                      const checked = list.includes(p.key);
+                      return (
+                        <label
+                          key={p.key}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
+                            checked
+                              ? "border-orange-300 bg-orange-50"
+                              : "border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePage(p.key)}
+                            className="accent-orange-500"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-800">{p.label}</p>
+                            <p className="text-[11px] text-gray-400 truncate">{p.key}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
               <div className="pt-4 mt-4 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-xs text-gray-500">
-                  {savedMsg}
-                </span>
+                <span className="text-xs text-gray-500">{savedMsg}</span>
                 <button
                   onClick={save}
                   disabled={saving}

@@ -15,33 +15,24 @@ export const useUserStore = create((set) => ({
 
   // ✅ Register a new user
   registerUser: async (userData) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null }); // Set loading state and clear errors
     try {
-      // The form (RegisterUser.jsx) already validates with the same zod schema
-      // via react-hook-form. We forward the validated values directly so we
-      // don't double-validate (which previously stripped fields silently).
-      const validatedData = userData;
+      const validatedData = registerUserSchema.parse(userData); // Validate data with Zod schema
 
-      const formatDate = (v) => {
-        if (!v) return v;
-        if (v instanceof Date) return v.toISOString().split("T")[0];
-        // Already a YYYY-MM-DD string from the date input
-        return String(v).slice(0, 10);
-      };
-
+      // Prepare FormData for multipart/form-data request
       const formData = new FormData();
       for (const key in validatedData) {
-        const val = validatedData[key];
-        if (val === undefined || val === null || val === "") continue;
-        if (key === "image" && val instanceof File) {
-          formData.append("image", val);
-        } else if (key === "skills" && typeof val === "string") {
-          const skillsArray = val.split(",").map((s) => s.trim()).filter(Boolean);
-          formData.append(key, JSON.stringify(skillsArray));
-        } else if (["registration_date", "joining_date", "dob"].includes(key)) {
-          formData.append(key, formatDate(val));
-        } else {
-          formData.append(key, val);
+        if (key === "image" && validatedData[key] instanceof File) {
+          formData.append("image", validatedData[key]); // Append image file
+        } else if (key === "skills" && validatedData[key]) {
+          const skillsArray = validatedData[key].split(",").map((skill) => skill.trim()); // Convert skills string to array
+          formData.append(key, JSON.stringify(skillsArray)); // Append as JSON string
+        } else if (validatedData[key] !== undefined && validatedData[key] !== null) {
+          if (["registration_date", "joining_date", "dob"].includes(key)) {
+            formData.append(key, validatedData[key].toISOString().split("T")[0]); // Format dates as YYYY-MM-DD
+          } else {
+            formData.append(key, validatedData[key]); // Append other fields as-is
+          }
         }
       }
 

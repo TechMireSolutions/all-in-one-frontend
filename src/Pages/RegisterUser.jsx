@@ -248,27 +248,14 @@ const RoleSelectionModal = ({ isOpen, onSelectRole, onClose, onPasswordSubmit, p
 };
 
 const RegisterUser = () => {
-  const { updateUser, registerUser, loading, error } = useUserStore();
-  const { contacts: rawContacts, fetchContacts: fetchContactsFromStore, createContact } = useContactStore();
-  // Normalize contacts from the Contacts store into a flat shape the existing
-  // dropdown / autofill code understands.
-  const contacts = (rawContacts || []).map((c) => ({
-    ...c,
-    full_name:      `${c.first_name || ""} ${c.last_name || ""}`.trim(),
-    email:          c.emails?.[0]?.email_address || "",
-    contact_number: c.phoneNumbers?.[0]?.phone_number || "",
-    permanent_address: c.addresses?.[0]
-      ? [c.addresses[0].address_line1, c.addresses[0].address_line2, c.addresses[0].city, c.addresses[0].state, c.addresses[0].country, c.addresses[0].postal_code].filter(Boolean).join(", ")
-      : "",
-    guardian_phone: c.family?.father_phone || "",
-  }));
-  const fetchContacts = () => fetchContactsFromStore();
+  const { updateUser, loading, error, users: contacts, fetchUsers: fetchContacts } = useUserStore();
+  const { createContact } = useContactStore();
   const [imagePreview, setImagePreview] = useState(null);
   const [step, setStep] = useState(1);
   const [progress, setProgress] = useState(0);
   const [popupMessage, setPopupMessage] = useState(null);
-  const [role, setRole] = useState("employee");
-  const [isRoleSelectionModalOpen, setIsRoleSelectionModalOpen] = useState(false);
+  const [role, setRole] = useState(null);
+  const [isRoleSelectionModalOpen, setIsRoleSelectionModalOpen] = useState(true);
   const [isHrModalOpen, setIsHrModalOpen] = useState(false);
   const [hrList, setHrList] = useState([]);
   const [passwordError, setPasswordError] = useState(null);
@@ -364,7 +351,10 @@ const RegisterUser = () => {
     "permanent_address",
     "contact_number",
     "email",
-    // degree / institute / grade / year removed — now optional, captured in Contacts.
+    "degree",
+    "institute",
+    "grade",
+    "year",
     "in_time",
     "out_time",
     "Salary_Cap",
@@ -375,20 +365,6 @@ const RegisterUser = () => {
   useEffect(() => {
     fetchContacts("contact");
   }, []);
-
-  // Auto-generate the next Employee ID by scanning existing users.
-  useEffect(() => {
-    const API = import.meta.env.VITE_API_BASE_URL;
-    fetch(`${API}users`).then((r) => r.json()).then((j) => {
-      const list = j.users || j || [];
-      const used = list
-        .map((u) => /^EMP-(\d+)$/i.exec(u.employee_id || ""))
-        .filter(Boolean)
-        .map((m) => parseInt(m[1], 10));
-      const next = (used.length ? Math.max(...used) : 0) + 1;
-      setValue("employee_id", `EMP-${String(next).padStart(3, "0")}`);
-    }).catch(() => {});
-  }, [setValue]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -412,63 +388,27 @@ const RegisterUser = () => {
     );
   });
 
-  // Handle contact selection — autofill all fields, including the JSON
-  // blocks (family/education/experience/office/health) now stored on Contact.
+  // Handle contact selection — autofill all fields
   const handleContactSelect = (contact) => {
     setSelectedContact(contact);
     setContactSearch(contact.full_name);
     setShowContactDropdown(false);
 
-    // ── Identity ──
+    // Autofill form fields from the selected contact
     setValue("full_name", contact.full_name || "");
-    setValue("email", contact.email || (contact.emails?.[0]?.email_address) || "");
+    setValue("email", contact.email || "");
     setValue("gender", contact.gender || "");
     setValue("cnic", contact.cnic || "");
-    setValue("contact_number", contact.contact_number || (contact.phoneNumbers?.[0]?.phone_number) || "");
-    setValue("permanent_address",
-      contact.permanent_address ||
-      (contact.addresses?.[0]
-        ? [contact.addresses[0].address_line1, contact.addresses[0].address_line2, contact.addresses[0].city, contact.addresses[0].state, contact.addresses[0].country, contact.addresses[0].postal_code].filter(Boolean).join(", ")
-        : "")
-    );
-    setValue("guardian_phone", contact.guardian_phone || contact.family?.father_phone || contact.contact_number || "");
-    if (contact.family?.mother_phone) setValue("reference_contact", contact.family.mother_phone);
+    setValue("contact_number", contact.contact_number || "");
+    setValue("permanent_address", contact.permanent_address || "");
+    setValue("guardian_phone", contact.guardian_phone || contact.contact_number || "");
+    if (contact.position) setValue("position", contact.position);
 
-    // ── DOB ──
+    // Handle DOB
     if (contact.dob) {
       const dobStr = typeof contact.dob === "string" ? contact.dob.split("T")[0] : new Date(contact.dob).toISOString().split("T")[0];
       setValue("dob", dobStr);
     }
-
-    // ── Education ──
-    if (contact.education?.degree)    setValue("degree",    contact.education.degree);
-    if (contact.education?.institute) setValue("institute", contact.education.institute);
-    if (contact.education?.grade)     setValue("grade",     contact.education.grade);
-    if (contact.education?.year)      setValue("year",      contact.education.year);
-
-    // ── Experience ──
-    if (contact.experience?.teach_contact)   setValue("teaching_contact",  contact.experience.teach_contact);
-    if (contact.experience?.teach_subjects)  setValue("teaching_subjects", contact.experience.teach_subjects);
-    if (contact.experience?.teach_institute) setValue("teaching_institute", contact.experience.teach_institute);
-    if (contact.experience?.position)        setValue("position",          contact.experience.position);
-    if (contact.experience?.organization)    setValue("organization",      contact.experience.organization);
-    if (contact.experience?.skills)          setValue("skills",            contact.experience.skills);
-
-    // ── Office ──
-    if (contact.office?.employee_id)       setValue("employee_id",       contact.office.employee_id);
-    if (contact.office?.registration_date) setValue("registration_date", contact.office.registration_date);
-    if (contact.office?.joining_date)      setValue("joining_date",      contact.office.joining_date);
-    if (contact.office?.post_applied_for)  setValue("post_applied_for",  contact.office.post_applied_for);
-    if (contact.office?.check_in_time)     setValue("in_time",           contact.office.check_in_time);
-    if (contact.office?.check_out_time)    setValue("out_time",          contact.office.check_out_time);
-    if (contact.office?.salary_cap)        setValue("Salary_Cap",        contact.office.salary_cap);
-
-    // ── Health ──
-    if (contact.health?.any_disease)     setValue("has_disease",         contact.health.any_disease);
-    if (contact.health?.disease_details) setValue("disease_description", contact.health.disease_details);
-
-    // Fallback to old single position field if no experience block exists
-    if (!contact.experience?.position && contact.position) setValue("position", contact.position);
 
     showPopup(`Contact "${contact.full_name}" loaded! Review & complete the remaining fields.`);
   };
@@ -511,11 +451,7 @@ const RegisterUser = () => {
   const onSubmit = async (data) => {
     if (!isValid) {
       console.error("❌ Validation failed:", errors);
-      const firstError = Object.entries(errors)[0];
-      const msg = firstError
-        ? `${firstError[0]}: ${firstError[1]?.message || "invalid"}`
-        : "Validation failed. Please check your inputs.";
-      showPopup(msg, "error");
+      showPopup("Validation failed. Please check your inputs.", "error");
       return;
     }
     if (!selectedContact) {
@@ -530,17 +466,7 @@ const RegisterUser = () => {
         login_access: false,
       };
       
-      // The selected "contact" is from /api/contacts (UUID id) — we always
-      // CREATE a fresh user record for the employee registration, never
-      // update the contact row itself.
-      const result = await registerUser(employeeData);
-      if (!result) {
-        // Surface the real reason that registerUser failed (Zod or API error)
-        // which is stored on the userStore.
-        const storeErr = useUserStore.getState().error;
-        showPopup(storeErr || "Registration failed — check console for details.", "error");
-        return;
-      }
+      const result = await updateUser(selectedContact.id, employeeData);
       if (result) {
         showPopup("Employee registered successfully!");
         reset();
@@ -581,8 +507,11 @@ const RegisterUser = () => {
       ];
       const hasErrors = step1Required.some((field) => errors[field]);
       if (!hasErrors) setStep(2);
+    } else if (step === 2) {
+      const step2Required = ["degree", "institute", "grade", "year"];
+      const hasErrors = step2Required.some((field) => errors[field]);
+      if (!hasErrors) setStep(3);
     }
-    // Old step 2 (Education/Experience) removed — fields moved to Contacts page.
   };
 
   const prevStep = () => setStep(step - 1);
@@ -914,20 +843,9 @@ const RegisterUser = () => {
           transition={{ duration: 0.5 }}
           className="container mx-auto max-w-2xl"
         >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold flex items-center text-gray-800">
-              <User size={24} className="mr-2 text-orange-500" /> Register Employee
-            </h2>
-            <motion.button
-              type="button"
-              onClick={() => setIsHrModalOpen(true)}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-orange-300 text-orange-600 hover:bg-orange-50 text-sm font-semibold rounded-lg shadow-sm"
-            >
-              <Users size={14} /> Create HR
-            </motion.button>
-          </div>
+          <h2 className="text-2xl font-bold mb-6 flex items-center text-gray-800">
+            <User size={24} className="mr-2 text-orange-500" /> Register Employee
+          </h2>
 
           {error && !popupMessage && (
             <p className="text-red-500 mb-4 text-sm">{error}</p>
@@ -1045,12 +963,7 @@ const RegisterUser = () => {
               </div>
 
               <motion.form
-            onSubmit={handleSubmit(onSubmit, (errs) => {
-              console.error("❌ RHF validation errors:", errs);
-              const first = Object.entries(errs)[0];
-              const msg = first ? `${first[0]}: ${first[1]?.message || "invalid"}` : "Form has invalid fields.";
-              showPopup(msg, "error");
-            })}
+            onSubmit={handleSubmit(onSubmit)}
             className="space-y-6 bg-white p-6 rounded-lg shadow-md"
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
@@ -1258,9 +1171,9 @@ const RegisterUser = () => {
                 </motion.div>
               )}
 
-              {false && step === 999 && (
+              {step === 2 && (
                 <motion.div
-                  key="step2-removed"
+                  key="step2"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
@@ -1475,9 +1388,9 @@ const RegisterUser = () => {
                 </motion.div>
               )}
 
-              {step === 2 && (
+              {step === 3 && (
                 <motion.div
-                  key="step2"
+                  key="step3"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
@@ -1490,14 +1403,13 @@ const RegisterUser = () => {
                     </h3>
                     <div>
                       <label className="block text-sm font-medium text-gray-600 flex items-center gap-1">
-                        <User size={16} className="text-orange-500" /> Employee ID <span className="text-emerald-600 text-[10px] uppercase ml-1">auto-generated</span>
+                        <User size={16} className="text-orange-500" /> Employee ID
                       </label>
                       <input
                         type="text"
                         {...register("employee_id")}
-                        readOnly
-                        title="Auto-generated based on existing records"
-                        className="w-full p-2 mt-1 border rounded-md text-sm bg-gray-50 text-gray-700 font-mono focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                        placeholder="Enter Employee ID"
+                        className="w-full p-2 mt-1 border rounded-md text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
                       />
                       {errors.employee_id && (
                         <p className="text-red-500 text-xs mt-1">{errors.employee_id.message}</p>
@@ -1605,7 +1517,50 @@ const RegisterUser = () => {
                     </div>
                   </div>
 
-                  {/* Health Information moved to Contacts → Health tab */}
+                  <div className="space-y-4 border-b pb-4">
+                    <h3 className="text-lg font-semibold flex items-center text-gray-800">
+                      <Heart size={20} className="text-orange-500" /> Health Information
+                    </h3>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 flex items-center gap-1">
+                        <Heart size={16} className="text-orange-500" /> Any Disease?
+                      </label>
+                      <select
+                        {...register("has_disease")}
+                        defaultValue=""
+                        className="w-full p-2 mt-1 border rounded-md text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                      >
+                        <option value="" disabled>
+                          Select Option
+                        </option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                      {errors.has_disease && (
+                        <p className="text-red-500 text-xs mt-1">{errors.has_disease.message}</p>
+                      )}
+                    </div>
+                    {hasDisease && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <label className="block text-sm font-medium text-gray-600 flex items-center gap-1">
+                          <Heart size={16} className="text-orange-500" /> Disease Description
+                        </label>
+                        <textarea
+                          {...register("disease_description")}
+                          placeholder="Describe the disease"
+                          className="w-full p-2 mt-1 border rounded-md text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                        />
+                        {errors.disease_description && (
+                          <p className="text-red-500 text-xs mt-1">{errors.disease_description.message}</p>
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
 
                   <div className="flex justify-between">
                     <motion.button
@@ -1651,7 +1606,13 @@ const RegisterUser = () => {
         </motion.div>
       )}
 
-      {/* Select Action modal removed — Create HR is now a button inside the Register Employee page. */}
+      <RoleSelectionModal
+        isOpen={isRoleSelectionModalOpen}
+        onSelectRole={handleRoleSelect}
+        onClose={() => setIsRoleSelectionModalOpen(false)}
+        onPasswordSubmit={handlePasswordSubmit}
+        passwordError={passwordError}
+      />
 
       <HrManagementModal
         isOpen={isHrModalOpen}
@@ -1666,84 +1627,6 @@ const RegisterUser = () => {
         type={popupMessage?.type}
         onClose={() => setPopupMessage(null)}
       />
-    </div>
-  );
-};
-
-// Loads /api/contacts and, on pick, calls react-hook-form's setValue
-// to populate the registration form's identity fields.
-const RegisterContactPicker = ({ setValue }) => {
-  const [contacts, setContacts] = React.useState([]);
-  React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_BASE_URL}contacts`)
-      .then((r) => r.json())
-      .then((j) => setContacts(j.contacts || j || []))
-      .catch(() => {});
-  }, []);
-  const pick = (id) => {
-    const c = contacts.find((x) => String(x.id) === String(id));
-    if (!c) return;
-    // Identity
-    setValue("full_name",       `${c.first_name || ""} ${c.last_name || ""}`.trim());
-    setValue("cnic",            c.cnic || "");
-    setValue("gender",          c.gender || "Male");
-    if (c.dob) setValue("dob",  new Date(c.dob).toISOString().slice(0, 10));
-    if (c.emails?.[0])          setValue("email", c.emails[0].email_address);
-    if (c.phoneNumbers?.[0])    setValue("contact_number", c.phoneNumbers[0].phone_number);
-    if (c.addresses?.[0]) {
-      const a = c.addresses[0];
-      setValue("permanent_address",
-        [a.address_line1, a.address_line2, a.city, a.state, a.country, a.postal_code]
-          .filter(Boolean).join(", "));
-    }
-    // Family → guardian + reference
-    if (c.family?.father_phone)   setValue("guardian_phone",   c.family.father_phone);
-    if (c.family?.mother_phone)   setValue("reference_contact", c.family.mother_phone);
-    // Education
-    if (c.education?.degree)      setValue("degree",    c.education.degree);
-    if (c.education?.institute)   setValue("institute", c.education.institute);
-    if (c.education?.grade)       setValue("grade",     c.education.grade);
-    if (c.education?.year)        setValue("year",      c.education.year);
-    // Experience
-    if (c.experience?.teach_contact)   setValue("teaching_contact", c.experience.teach_contact);
-    if (c.experience?.teach_subjects)  setValue("teaching_subjects", c.experience.teach_subjects);
-    if (c.experience?.teach_institute) setValue("teaching_institute", c.experience.teach_institute);
-    if (c.experience?.position)        setValue("position", c.experience.position);
-    if (c.experience?.organization)    setValue("organization", c.experience.organization);
-    if (c.experience?.skills)          setValue("skills", c.experience.skills);
-    // Office
-    if (c.office?.employee_id)       setValue("employee_id",      c.office.employee_id);
-    if (c.office?.registration_date) setValue("registration_date", c.office.registration_date);
-    if (c.office?.joining_date)      setValue("joining_date",     c.office.joining_date);
-    if (c.office?.post_applied_for)  setValue("post_applied_for", c.office.post_applied_for);
-    if (c.office?.check_in_time)     setValue("in_time",          c.office.check_in_time);
-    if (c.office?.check_out_time)    setValue("out_time",         c.office.check_out_time);
-    if (c.office?.salary_cap)        setValue("Salary_Cap",       c.office.salary_cap);
-    if (c.office?.description)       setValue("description",      c.office.description);
-    // Health
-    if (c.health?.any_disease)       setValue("has_disease",          c.health.any_disease);
-    if (c.health?.disease_details)   setValue("disease_description",  c.health.disease_details);
-  };
-  return (
-    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4">
-      <label className="text-[11px] font-semibold text-emerald-800 uppercase block mb-1">
-        Pick from existing Contacts (auto-fills personal info)
-      </label>
-      <select
-        onChange={(e) => pick(e.target.value)}
-        defaultValue=""
-        className="w-full border border-emerald-300 rounded px-3 py-2 bg-white text-sm"
-      >
-        <option value="">— Start blank or select a contact —</option>
-        {contacts.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.first_name} {c.last_name}{c.cnic ? ` · ${c.cnic}` : ""}
-          </option>
-        ))}
-      </select>
-      <p className="text-[10px] text-emerald-700 mt-1">
-        Don't see them? <a href="/contacts" className="underline">Add them in Contacts first</a>.
-      </p>
     </div>
   );
 };

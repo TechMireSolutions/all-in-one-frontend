@@ -18,4 +18,8 @@ export const GRANTABLE_PAGES = [
   { key: "/techmire-academy",        label: "Techmire Academy" },
 ];
 
+// Special two-level access keys for Project Tracker
+export const PROJECT_TRACKER_VIEW_KEY = "/project-tracker-view";
+export const PROJECT_TRACKER_EDIT_KEY = "/project-tracker";
+
 export const PAGE_KEYS = GRANTABLE_PAGES.map((p) => p.key);

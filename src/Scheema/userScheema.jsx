@@ -4,57 +4,63 @@ export const registerUserSchema = z.object({
   employee_id: z.string().min(1, "Employee ID is required"),
   registration_date: z.coerce.date().refine((date) => !isNaN(date.getTime()), { message: "Invalid Registration Date" }),
   joining_date: z.coerce.date().refine((date) => !isNaN(date.getTime()), { message: "Invalid Joining Date" }),
-  post_applied_for: z.string().min(1, "Post applied for is required"),
+  post_applied_for: z.enum(["Employee", "Internship"], { message: "Post applied for must be either 'Employee' or 'Internship'" }),
   full_name: z.string().min(5, "Full Name must be at least 5 characters"),
-  gender: z.string().min(1, "Gender is required"),
-  // Accept both formats: "4210112345671" (13 digits) and "42101-1234567-1" (with dashes).
-  cnic: z.string().refine((v) => /^\d{13}$/.test(v) || /^\d{5}-\d{7}-\d{1}$/.test(v), {
-    message: "CNIC must be 13 digits (with or without dashes)",
-  }),
+  gender: z.enum(["Male", "Female"], { message: "Gender must be either 'Male' or 'Female'" }),
+  cnic: z.string().length(13, "CNIC must be exactly 13 digits").regex(/^\d+$/, "CNIC must contain only digits"),
   dob: z.coerce.date().refine((date) => !isNaN(date.getTime()), { message: "Invalid Date of Birth" }),
   permanent_address: z.string().min(12, "Permanent Address must be at least 12 characters"),
-  // Accept "03001234567" (11 digits) or "+923001234567" (E.164) or anything with 10-13 digits in it.
-  contact_number: z.string().refine((v) => (v || "").replace(/\D/g, "").length >= 10, {
-    message: "Contact Number must contain at least 10 digits",
-  }),
+  contact_number: z.string().length(11, "Contact Number must be exactly 11 digits").regex(/^\d+$/, "Contact Number must contain only digits"),
   email: z.string().email("Invalid email format"),
   image: z.instanceof(File, { message: "Image must be a file" }).optional(),
-  // Education fields moved to Contacts page → made optional here.
-  degree:    z.string().optional(),
-  institute: z.string().optional(),
-  grade:     z.string().optional(),
-  year:      z.union([z.string(), z.coerce.number()]).optional(),
+  degree: z.string().min(1, "Degree is required"),
+  institute: z.string().min(1, "Institute is required"),
+  grade: z.enum(["Pass", "Fail", "Awaiting"], { message: "Grade must be 'Pass', 'Fail', or 'Awaiting'" }),
+  year: z.coerce.number().int().min(1900, "Year must be a valid year").max(new Date().getFullYear(), "Year cannot be in the future"),
   current_study: z.string().optional(),
   teaching_subjects: z.string().optional(),
   teaching_institute: z.string().optional(),
   teaching_contact: z.string()
     .optional()
-    .refine((val) => !val || (val || "").replace(/\D/g, "").length >= 10, {
-      message: "Teaching contact must contain at least 10 digits if provided",
+    .refine((val) => !val || (val.length === 11 && /^\d+$/.test(val)), {
+      message: "Teaching contact must be exactly 11 digits if provided",
     }),
   position: z.string().optional(),
   organization: z.string().optional(),
   skills: z.string().optional(),
   description: z.string().optional(),
-  in_time:  z.string().min(1, "Check-in time is required"),
-  out_time: z.string().min(1, "Check-out time is required"),
+  in_time: z.string()
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "In Time must be in HH:MM 24-hour format (e.g., 09:00 or 13:00)")
+    .refine((val) => val.length === 5, { message: "In Time must be exactly 5 characters (HH:MM)" }),
+  out_time: z.string()
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Out Time must be in HH:MM 24-hour format (e.g., 16:00 or 20:00)")
+    .refine((val) => val.length === 5, { message: "Out Time must be exactly 5 characters (HH:MM)" }),
   Salary_Cap: z.coerce.number()
     .int("Salary Cap must be a whole number (e.g., 50000)")
     .min(0, "Salary Cap must be a positive number")
     .max(2147483647, "Salary Cap must not exceed 2,147,483,647"),
   // New Fields
-  guardian_phone: z.string().refine((v) => (v || "").replace(/\D/g, "").length >= 10, {
-    message: "Guardian/Alternate Phone must contain at least 10 digits",
-  }),
+  guardian_phone: z.string()
+    .length(11, "Guardian/Alternate Phone must be exactly 11 digits")
+    .regex(/^\d+$/, "Guardian/Alternate Phone must contain only digits"),
   reference_name: z.string().optional(),
   reference_contact: z.string()
     .optional()
-    .refine((val) => !val || (val || "").replace(/\D/g, "").length >= 10, {
-      message: "Reference contact must contain at least 10 digits if provided",
+    .refine((val) => !val || (val.length === 11 && /^\d+$/.test(val)), {
+      message: "Reference contact must be exactly 11 digits if provided",
     }),
-  // Health fields moved to Contacts page → made optional here.
-  has_disease:         z.string().optional(),
-  disease_description: z.string().optional(),
-  record_type:         z.enum(["contact", "employee"]).optional(),
-  login_access:        z.boolean().optional(),
-});
+  has_disease: z.enum(["Yes", "No"], { message: "Please specify if there is any disease" }),
+  disease_description: z.string()
+    .optional()
+    .refine((val) => val !== undefined && val !== "" || !val, {
+      message: "Disease description is required if disease is present",
+    }),
+  record_type: z.enum(["contact", "employee"]).optional(),
+  login_access: z.boolean().optional(),
+}).refine(
+  (data) => data.has_disease !== "Yes" || (data.has_disease === "Yes" && data.disease_description && data.disease_description.length > 0),
+  {
+    message: "Disease description is required when 'Has Disease' is 'Yes'",
+    path: ["disease_description"],
+  }
+);
