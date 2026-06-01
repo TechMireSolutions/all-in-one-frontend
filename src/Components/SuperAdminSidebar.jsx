@@ -16,9 +16,10 @@ import { PROJECT_TRACKER_VIEW_KEY, PROJECT_TRACKER_EDIT_KEY } from "../Constants
 // ── Nav config (groups + direct links) ──────────────────────────────────────
 const navConfig = {
   superadmin: [
-    { path: "/contacts",      label: "Contacts",     icon: Contact,  roles: ["superadmin", "hr"] },
-    { path: "/users",         label: "Registration", icon: Users,    roles: ["superadmin", "hr"] },
-    { path: "/accounts",      label: "Accounts",     icon: DollarSign, roles: ["superadmin", "hr"] },
+    { path: "/contacts",          label: "Contacts",      icon: Contact,  roles: ["superadmin", "hr"] },
+    { path: "/registration/forms", label: "Registration", icon: Users,    roles: ["superadmin", "hr"] },
+    { path: "/users",             label: "Employees",     icon: UserPlus, roles: ["superadmin", "hr"] },
+    { path: "/accounts",          label: "Accounts",      icon: DollarSign, roles: ["superadmin", "hr"] },
     {
       label: "Management",
       icon: Users,
@@ -52,7 +53,6 @@ const navConfig = {
       ],
     },
     { path: "/project-tracker", label: "Project Progress Tracker", icon: BarChart2, roles: ["superadmin", "hr"] },
-    { path: "/registration/forms", label: "Registration Forms", icon: FileText, roles: ["superadmin"] },
     { path: "/permissions", label: "Permissions", icon: Shield, roles: ["superadmin"] },
     { path: "/roles", label: "Roles", icon: Shield, roles: ["superadmin"] },
     {
