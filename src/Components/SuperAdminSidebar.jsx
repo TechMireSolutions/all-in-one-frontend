@@ -52,7 +52,7 @@ const navConfig = {
       ],
     },
     { path: "/project-tracker", label: "Project Progress Tracker", icon: BarChart2, roles: ["superadmin", "hr"] },
-    { path: "/registration/forms", label: "Registration", icon: FileText, roles: ["superadmin"] },
+    { path: "/registration/forms", label: "Registration Forms", icon: FileText, roles: ["superadmin"] },
     { path: "/permissions", label: "Permissions", icon: Shield, roles: ["superadmin"] },
     { path: "/roles", label: "Roles", icon: Shield, roles: ["superadmin"] },
     {
