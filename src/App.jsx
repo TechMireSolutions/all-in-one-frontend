@@ -31,6 +31,11 @@ import PermissionsPage from "./Pages/PermissionsPage";
 import RolesPage from "./Pages/RolesPage";
 import TechmireAcademy from "./Pages/TechmireAcademy";
 import ProjectProgressTracker from "./Pages/ProjectProgressTracker";
+import RegForms from "./Pages/Registration/Forms";
+import RegFormBuilder from "./Pages/Registration/FormBuilder";
+import RegSubmissions from "./Pages/Registration/Registrations";
+import RegDetail from "./Pages/Registration/RegistrationDetail";
+import PublicRegister from "./Pages/Registration/PublicRegister";
 import { PROJECT_TRACKER_VIEW_KEY, PROJECT_TRACKER_EDIT_KEY } from "./Constants/pages";
 import CourseSettings from "./Pages/CourseSettings";
 import CourseView from "./Pages/CourseView";
@@ -122,6 +127,9 @@ const App = () => {
     <Router>
       <Layout>
         <Routes>
+          {/* Public registration form — accessible without authentication */}
+          <Route path="/register/:slug" element={<PublicRegister />} />
+
           {!user && (
             <>
               <Route path="/" element={<AuthPage />} />
@@ -214,6 +222,12 @@ const App = () => {
               {role?.toLowerCase() === "superadmin" && (
                 <>
                   <Route path="/project-tracker" element={<ProjectProgressTracker />} />
+                  {/* Registration admin */}
+                  <Route path="/registration/forms"                       element={<RegForms />} />
+                  <Route path="/registration/forms/new"                   element={<RegFormBuilder />} />
+                  <Route path="/registration/forms/:id/edit"              element={<RegFormBuilder />} />
+                  <Route path="/registration/forms/:formId/submissions"   element={<RegSubmissions />} />
+                  <Route path="/registration/registrations/:id"           element={<RegDetail />} />
                   <Route path="/uploadfile"    element={<UploadPage />} />
                   <Route path="/register"      element={<RegisterUser />} />
                   <Route path="/users"         element={<AllRegisteredUsers />} />
