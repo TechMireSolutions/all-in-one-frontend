@@ -7,7 +7,7 @@ import { PROJECT_TRACKER_VIEW_KEY, PROJECT_TRACKER_EDIT_KEY } from "../Constants
 import {
   Upload, Eye, UserPlus, Users, DollarSign, UserX,
   GraduationCap, Briefcase, FileText, Layers, User,
-  LayoutDashboard, LogOut, Menu, X, ChevronLeft, ChevronRight, ChevronDown, Contact, Shield, BookOpen, BarChart2,
+  LayoutDashboard, LogOut, Menu, X, ChevronLeft, ChevronRight, ChevronDown, Contact, Shield, BookOpen, BarChart2, Lock,
 } from "lucide-react";
 
 // ── Nav config (groups + direct links) ──────────────────────────────────────
@@ -55,7 +55,9 @@ const navConfig = {
       path: "/techmire-academy",
       label: "Techmire Academy",
       icon: BookOpen,
+      // Visible to everyone, but locked — click does nothing and a 🔒 icon shows.
       roles: ["superadmin", "hr", "employee", "ojt", "student"],
+      lockedFor: ["superadmin", "hr", "employee", "ojt", "student"],
     },
   ],
 };
@@ -131,14 +133,21 @@ const SuperAdminSidebar = () => {
         </a>
       );
     }
+    const isLocked = Array.isArray(item.lockedFor) && item.lockedFor.includes(activeRole);
     return (
       <NavLink
-        to={item.path}
-        onClick={() => setMobileOpen(false)}
+        to={isLocked ? "#" : item.path}
+        onClick={(e) => {
+          if (isLocked) { e.preventDefault(); return; }
+          setMobileOpen(false);
+        }}
+        title={isLocked ? "Locked — feature disabled" : undefined}
         className={({ isActive }) =>
           `flex items-center gap-3 py-2.5 rounded-xl transition-all duration-200 group
           ${indent ? "px-3 mx-3" : "px-4 mx-2"} mb-0.5
-          ${isActive
+          ${isLocked
+            ? "text-gray-500 cursor-not-allowed opacity-70"
+            : isActive
             ? "bg-orange-500 text-white shadow-lg shadow-orange-500/30"
             : "text-gray-300 hover:bg-white/10 hover:text-white"
           }`
@@ -149,7 +158,7 @@ const SuperAdminSidebar = () => {
             {item.icon && (
               <item.icon
                 size={16}
-                className={`flex-shrink-0 ${isActive ? "text-white" : "text-gray-400 group-hover:text-white"}`}
+                className={`flex-shrink-0 ${isLocked ? "text-gray-500" : isActive ? "text-white" : "text-gray-400 group-hover:text-white"}`}
               />
             )}
             <AnimatePresence>
@@ -159,12 +168,15 @@ const SuperAdminSidebar = () => {
                   animate={{ opacity: 1, width: "auto" }}
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="text-sm font-medium overflow-hidden whitespace-nowrap"
+                  className="text-sm font-medium overflow-hidden whitespace-nowrap flex-1"
                 >
                   {item.label}
                 </motion.span>
               )}
             </AnimatePresence>
+            {isLocked && !collapsed && (
+              <Lock size={12} className="text-gray-400 flex-shrink-0" />
+            )}
           </>
         )}
       </NavLink>

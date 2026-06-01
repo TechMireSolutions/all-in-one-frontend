@@ -109,7 +109,7 @@ const App = () => {
             <>
               <Route path="/view" element={<ViewDataPage />} />
               <Route path="/policies" element={<PolicyPage />} />
-              <Route path="/techmire-academy" element={<TechmireAcademy />} />
+              <Route path="/techmire-academy" element={<ProtectedRoute allowedRoles={["__locked__"]}><TechmireAcademy /></ProtectedRoute>} />
               <Route path="/course-settings/:course" element={<CourseSettings />} />
               <Route path="/course/:course" element={<CourseView />} />
               <Route path="/quiz/:contentId" element={<QuizPage />} />
