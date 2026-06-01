@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useUserStore } from "../Store/userStore";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios";
 import {
   Search,
   Trash2,
@@ -28,9 +29,15 @@ import {
   Heart,
   Award,
   BookOpen,
+  Plus,
+  Copy,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import UserPDF from "../Components/UserPDF";
+
+const API = import.meta.env.VITE_API_BASE_URL;
 
 const AllRegisteredUsers = () => {
   const { users, fetchUsers, deleteUser, updateUser, toggleLoginAccess, loading, error } =
@@ -42,9 +49,50 @@ const AllRegisteredUsers = () => {
   const [viewingUser, setViewingUser] = useState(null);
   const [deleteMessage, setDeleteMessage] = useState(null); // State for delete popup
 
+  // Dynamic Registration Forms and unified tabs logic
+  const [activeTab, setActiveTab] = useState("employees");
+  const [forms, setForms] = useState([]);
+  const [formsLoading, setFormsLoading] = useState(true);
+  const [formsSearch, setFormsSearch] = useState("");
+  const [formsStatusFilter, setFormsStatusFilter] = useState("all");
+  const navigate = useNavigate();
+
+  const loadForms = () => {
+    setFormsLoading(true);
+    axios.get(`${API}registration/forms`)
+      .then((r) => setForms(r.data || []))
+      .catch(() => setForms([]))
+      .finally(() => setFormsLoading(false));
+  };
+
   useEffect(() => {
     fetchUsers("employee");
+    loadForms();
   }, [fetchUsers]);
+
+  const filteredForms = forms.filter((f) => {
+    if (formsStatusFilter !== "all" && f.status !== formsStatusFilter) return false;
+    if (!formsSearch.trim()) return true;
+    const s = formsSearch.toLowerCase();
+    return (f.title || "").toLowerCase().includes(s) || (f.slug || "").toLowerCase().includes(s);
+  });
+
+  const publishForm = async (formId) => {
+    if (!confirm("Publish this form so the public URL is live?")) return;
+    await axios.post(`${API}registration/forms/${formId}/publish`);
+    loadForms();
+  };
+
+  const cloneForm = async (formId) => {
+    const r = await axios.post(`${API}registration/forms/${formId}/clone`);
+    navigate(`/registration/forms/${r.data.id}/edit`);
+  };
+
+  const removeForm = async (formId) => {
+    if (!confirm("Delete this form? All sections, fields, and submissions are cascaded and will be lost.")) return;
+    await axios.delete(`${API}registration/forms/${formId}`);
+    loadForms();
+  };
 
   const handleEditClick = (user) => {
     setEditingUser({ ...user });
@@ -137,197 +185,312 @@ const AllRegisteredUsers = () => {
     exit: { opacity: 0, scale: 0.95 },
   };
 
+  const STATUS_BADGE = {
+    Draft:    "bg-gray-100 text-gray-700",
+    Open:     "bg-emerald-100 text-emerald-700",
+    Closed:   "bg-amber-100 text-amber-700",
+    Archived: "bg-rose-100 text-rose-700",
+  };
+
   return (
     <div className="container mx-auto p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-800">
-            Registered Employees
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {users.length} active employee{users.length !== 1 ? "s" : ""} registered
-          </p>
-        </div>
-        <Link
-          to="/register"
-          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow-md shadow-orange-200 cursor-pointer animate-fadeIn"
+      {/* Premium Tab Navigation */}
+      <div className="flex gap-4 border-b border-gray-200 mb-6">
+        <button
+          onClick={() => setActiveTab("employees")}
+          className={`pb-3 font-semibold text-base relative transition-colors cursor-pointer ${
+            activeTab === "employees" ? "text-orange-500" : "text-gray-500 hover:text-gray-700"
+          }`}
         >
-          <UserPlus size={16} /> Register Employee
-        </Link>
+          Active Employees
+          {activeTab === "employees" && (
+            <motion.span
+              layoutId="activeTabUnderline"
+              className="absolute left-0 right-0 bottom-0 h-0.5 bg-orange-500"
+            />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("forms")}
+          className={`pb-3 font-semibold text-base relative transition-colors cursor-pointer ${
+            activeTab === "forms" ? "text-orange-500" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Registration
+          {activeTab === "forms" && (
+            <motion.span
+              layoutId="activeTabUnderline"
+              className="absolute left-0 right-0 bottom-0 h-0.5 bg-orange-500"
+            />
+          )}
+        </button>
       </div>
 
-      <div className="mb-8">
-        <div className="relative max-w-md">
-          <Search
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-            size={20}
-          />
-          <input
-            type="text"
-            placeholder="Search by name or ID..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
+      {activeTab === "employees" ? (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-800">
+                Registered Employees
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                {users.length} active employee{users.length !== 1 ? "s" : ""} registered
+              </p>
+            </div>
+            <Link
+              to="/register"
+              className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow-md shadow-orange-200 cursor-pointer animate-fadeIn"
+            >
+              <UserPlus size={16} /> Register Employee
+            </Link>
+          </div>
 
-      {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6">
-          {error}
-        </div>
-      )}
+          <div className="mb-8">
+            <div className="relative max-w-md">
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
+              <input
+                type="text"
+                placeholder="Search by name or ID..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
 
-      {/* Delete Popup Message */}
-      <AnimatePresence>
-        {deleteMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-lg z-50"
-          >
-            {deleteMessage.includes("Deleting") && (
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500 mr-2"></div>
-                {deleteMessage}
-              </div>
+          {error && (
+            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6">
+              {error}
+            </div>
+          )}
+
+          {/* Delete Popup Message */}
+          <AnimatePresence>
+            {deleteMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="fixed top-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-lg z-50"
+              >
+                {deleteMessage.includes("Deleting") && (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500 mr-2"></div>
+                    {deleteMessage}
+                  </div>
+                )}
+                {!deleteMessage.includes("Deleting") && deleteMessage}
+              </motion.div>
             )}
-            {!deleteMessage.includes("Deleting") && deleteMessage}
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
 
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-        </div>
-      ) : (
-        <motion.div
-          variants={tableVariants}
-          initial="hidden"
-          animate="visible"
-          className="overflow-x-auto bg-white rounded-lg shadow"
-        >
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-[oklch(0.67_0.19_42.13)]">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
-                  Employee ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
-                  Full Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
-                  Position
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
-                  Login Access
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-800 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              <AnimatePresence>
-                {filteredUsers.map((user) => (
-                  <motion.tr
-                    key={user.id}
-                    variants={rowVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="hidden"
-                    className="hover:bg-gray-50"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <CreditCard className="h-5 w-5 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">
-                          {user.employee_id}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {user.image ? (
-                          <img
-                            src={user.image}
-                            alt={user.full_name}
-                            className="h-8 w-8 rounded-full mr-2"
-                          />
-                        ) : (
-                          <User className="h-8 w-8 text-gray-400 mr-2" />
-                        )}
-                        <span className="text-sm font-medium text-gray-900">
-                          {user.full_name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Briefcase className="h-5 w-5 text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">
-                          {user.post_applied_for}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
-                      <button
-                        onClick={async () => {
-                          const updatedAccess = await toggleLoginAccess(user.id);
-                          if (updatedAccess !== null) {
-                            setDeleteMessage(`Login access ${updatedAccess ? 'granted' : 'revoked'} for ${user.full_name}`);
-                            setTimeout(() => setDeleteMessage(null), 2000);
-                          }
-                        }}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          user.login_access ? "bg-orange-500" : "bg-gray-200"
-                        }`}
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <motion.div
+              variants={tableVariants}
+              initial="hidden"
+              animate="visible"
+              className="overflow-x-auto bg-white rounded-lg shadow"
+            >
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-[oklch(0.67_0.19_42.13)]">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
+                      Employee ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
+                      Full Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
+                      Position
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase tracking-wider">
+                      Login Access
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-800 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  <AnimatePresence>
+                    {filteredUsers.map((user) => (
+                      <motion.tr
+                        key={user.id}
+                        variants={rowVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="hidden"
+                        className="hover:bg-gray-50"
                       >
-                        <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            user.login_access ? "translate-x-5" : "translate-x-0"
-                          }`}
-                        />
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end space-x-3">
-                        <button
-                          onClick={() => handleViewClick(user)}
-                          className="text-indigo-600 hover:text-indigo-900 cursor-pointer"
-                        >
-                          <Eye className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleEditClick(user)}
-                          className="text-blue-600 hover:text-blue-900 cursor-pointer"
-                        >
-                          <Edit2 className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(user.id, user.full_name)}
-                          className="text-red-600 hover:text-red-900 cursor-pointer"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
-              </AnimatePresence>
-            </tbody>
-          </table>
-        </motion.div>
-      )}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <CreditCard className="h-5 w-5 text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">
+                              {user.employee_id}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            {user.image ? (
+                              <img
+                                src={user.image}
+                                alt={user.full_name}
+                                className="h-8 w-8 rounded-full mr-2"
+                              />
+                            ) : (
+                              <User className="h-8 w-8 text-gray-400 mr-2" />
+                            )}
+                            <span className="text-sm font-medium text-gray-900">
+                              {user.full_name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <Briefcase className="h-5 w-5 text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">
+                              {user.post_applied_for}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
+                          <button
+                            onClick={async () => {
+                              const updatedAccess = await toggleLoginAccess(user.id);
+                              if (updatedAccess !== null) {
+                                setDeleteMessage(`Login access ${updatedAccess ? 'granted' : 'revoked'} for ${user.full_name}`);
+                                setTimeout(() => setDeleteMessage(null), 2000);
+                              }
+                            }}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              user.login_access ? "bg-orange-500" : "bg-gray-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                user.login_access ? "translate-x-5" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end space-x-3">
+                            <button
+                              onClick={() => handleViewClick(user)}
+                              className="text-indigo-600 hover:text-indigo-900 cursor-pointer"
+                            >
+                              <Eye className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleEditClick(user)}
+                              className="text-blue-600 hover:text-blue-900 cursor-pointer"
+                            >
+                              <Edit2 className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClick(user.id, user.full_name)}
+                              className="text-red-600 hover:text-red-900 cursor-pointer"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </motion.div>
+          )}
 
-      <Link
-        to="/register"
-        className="inline-block mt-8 px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
-      >
-        Register New Employee
-      </Link>
+          <Link
+            to="/register"
+            className="inline-block mt-8 px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+          >
+            Register New Employee
+          </Link>
+        </>
+      ) : (
+        <div className="max-w-6xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <FileText size={20} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 leading-tight">Registration Forms</h1>
+                <p className="text-sm text-gray-500">Build dynamic forms; submissions live as their child rows.</p>
+              </div>
+            </div>
+            <Link to="/registration/forms/new" className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg shadow-md cursor-pointer">
+              <Plus size={14} /> New form
+            </Link>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+              <input value={formsSearch} onChange={(e) => setFormsSearch(e.target.value)} placeholder="Search title or slug…"
+                className="w-full pl-8 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <select value={formsStatusFilter} onChange={(e) => setFormsStatusFilter(e.target.value)}
+              className="border border-gray-300 bg-white rounded-lg px-2 py-2 text-sm">
+              <option value="all">All status</option>
+              <option>Draft</option><option>Open</option><option>Closed</option><option>Archived</option>
+            </select>
+          </div>
+
+          {formsLoading ? (
+            <p className="text-sm text-gray-500">Loading…</p>
+          ) : filteredForms.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No forms yet. Click <strong>New form</strong> to start.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredForms.map((f, i) => (
+                <motion.div key={f.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}
+                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold text-gray-900">{f.title}</p>
+                      <p className="text-xs text-gray-500 font-mono">/{f.slug}</p>
+                    </div>
+                    <span className={`text-[11px] uppercase font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[f.status] || "bg-gray-100"}`}>{f.status}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-2 min-h-[2em]">{f.description || "—"}</p>
+                  <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                    <Link to={`/registration/forms/${f.id}/edit`} className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 cursor-pointer">Edit</Link>
+                    <Link to={`/registration/forms/${f.id}/submissions`} className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 cursor-pointer">Submissions</Link>
+                    {f.status !== "Open" && (
+                      <button onClick={() => publishForm(f.id)} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 inline-flex items-center gap-1 cursor-pointer">
+                        <Send size={11} /> Publish
+                      </button>
+                    )}
+                    {f.status === "Open" && (
+                      <a href={`/register/${f.slug}`} target="_blank" rel="noreferrer" className="px-2 py-1 text-xs rounded bg-sky-100 text-sky-700 hover:bg-sky-200 inline-flex items-center gap-1 cursor-pointer">
+                        <ExternalLink size={11} /> Open public
+                      </a>
+                    )}
+                    <button onClick={() => cloneForm(f.id)} className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1 cursor-pointer">
+                      <Copy size={11} /> Clone
+                    </button>
+                    <button onClick={() => removeForm(f.id)} className="ml-auto text-rose-600 hover:text-rose-800 p-1 cursor-pointer">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* View Modal */}
       <AnimatePresence>

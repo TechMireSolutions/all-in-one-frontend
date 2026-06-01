@@ -22,18 +22,42 @@ const baseTabs = [
 const RegistrationDetail = () => {
   const { id } = useParams();
   const [reg, setReg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [tab, setTab] = useState("answers");
 
-  const load = () => axios.get(`${API}registration/registrations/${id}`).then((r) => setReg(r.data));
-  useEffect(load, [id]);
+  const load = () => {
+    setLoading(true);
+    setError(null);
+    axios.get(`${API}registration/registrations/${id}`)
+      .then((r) => {
+        setReg(r.data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load registration:", err);
+        setError(err.response?.data?.message || err.message || "Failed to load registration details");
+        setLoading(false);
+      });
+  };
 
-  if (!reg) return <div className="p-8 text-gray-500">Loading…</div>;
+  useEffect(() => {
+    load();
+  }, [id]);
 
   const setStatus = async (to_status) => {
     const note = prompt(`Note for "${to_status}" (optional):`) || "";
-    await axios.patch(`${API}registration/registrations/${id}/status`, { to_status, note });
-    load();
+    try {
+      await axios.patch(`${API}registration/registrations/${id}/status`, { to_status, note });
+      load();
+    } catch (err) {
+      alert("Failed to update status: " + (err.response?.data?.message || err.message));
+    }
   };
+
+  if (loading) return <div className="p-8 text-gray-500">Loading…</div>;
+  if (error) return <div className="p-8 text-rose-600 bg-rose-50 border border-rose-200 rounded-xl m-4">Error: {error}</div>;
+  if (!reg) return <div className="p-8 text-gray-500">No registration data found.</div>;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
