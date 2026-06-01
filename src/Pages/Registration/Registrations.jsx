@@ -13,6 +13,7 @@ const ROLE_TABS = [
   { k: "Participant", label: "Participants", role: "Participant" },
   { k: "Student",  label: "Students",     role: "Student" },
   { k: "OJT",      label: "OJTs",         role: "OJT" },
+  { k: "Employee", label: "Employees",    role: "Employee" },
 ];
 
 const STATUS_PILL = {

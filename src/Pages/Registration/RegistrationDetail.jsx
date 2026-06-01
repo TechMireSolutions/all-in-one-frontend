@@ -3,17 +3,20 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ChevronLeft, ClipboardList, Users, GraduationCap, Briefcase, History, Wallet, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ClipboardList, Users, GraduationCap, Briefcase, History, Wallet, Plus, Trash2, UserCheck } from "lucide-react";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
-const TABS = [
-  { k: "answers",  label: "Answers",        i: ClipboardList },
-  { k: "roles",    label: "Roles",          i: Users },
-  { k: "students", label: "Student",        i: GraduationCap },
-  { k: "ojts",     label: "OJT",            i: Briefcase },
-  { k: "logs",     label: "Status history", i: History },
-  { k: "payment",  label: "Payment",        i: Wallet },
+// "students" / "ojts" / "employees" tabs are only shown when the registration
+// actually has rows in those child tables — driven by the loaded `reg`.
+const baseTabs = [
+  { k: "answers",   label: "Answers",        i: ClipboardList, always: true },
+  { k: "roles",     label: "Roles",          i: Users,         always: true },
+  { k: "students",  label: "Student",        i: GraduationCap, child: "students" },
+  { k: "ojts",      label: "OJT",            i: Briefcase,     child: "ojts" },
+  { k: "employees", label: "Employee",       i: UserCheck,     child: "employees" },
+  { k: "logs",      label: "Status history", i: History,       always: true },
+  { k: "payment",   label: "Payment",        i: Wallet,        always: true },
 ];
 
 const RegistrationDetail = () => {
@@ -49,7 +52,7 @@ const RegistrationDetail = () => {
       </div>
 
       <div className="border-b border-gray-200 flex flex-wrap gap-1 text-sm mb-5">
-        {TABS.map((t) => (
+        {baseTabs.filter((t) => t.always || (reg[t.child] || []).length > 0).map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             className={`relative px-3 py-2 flex items-center gap-1.5 ${tab === t.k ? "text-gray-900 font-medium" : "text-gray-500 hover:text-gray-800"}`}>
             <t.i size={14} /> {t.label}
@@ -60,8 +63,9 @@ const RegistrationDetail = () => {
 
       {tab === "answers"  && <AnswersPanel  reg={reg} />}
       {tab === "roles"    && <RolesPanel    reg={reg} reload={load} />}
-      {tab === "students" && <ChildPanel    rows={reg.students || []} kind="student" reload={load} />}
-      {tab === "ojts"     && <ChildPanel    rows={reg.ojts     || []} kind="ojt"     reload={load} />}
+      {tab === "students"  && <ChildPanel rows={reg.students  || []} kind="student"  reload={load} />}
+      {tab === "ojts"      && <ChildPanel rows={reg.ojts      || []} kind="ojt"      reload={load} />}
+      {tab === "employees" && <EmployeePanel rows={reg.employees || []} reload={load} />}
       {tab === "logs"     && <LogsPanel     reg={reg} />}
       {tab === "payment"  && <PaymentPanel  reg={reg} reload={load} />}
     </div>
@@ -121,7 +125,7 @@ const RolesPanel = ({ reg, reload }) => {
       {adding && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-2 flex flex-wrap items-center gap-2">
           <select value={draft.role_name} onChange={(e) => setDraft((d) => ({ ...d, role_name: e.target.value }))} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white">
-            {["Participant","Student","OJT","Instructor","Volunteer","Organizer","Speaker","Mentor","Attendee","Staff","Other"].map((r) => <option key={r}>{r}</option>)}
+            {["Participant","Student","OJT","Employee","Instructor","Volunteer","Organizer","Speaker","Mentor","Attendee","Staff","Other"].map((r) => <option key={r}>{r}</option>)}
           </select>
           <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={!!draft.is_primary} onChange={(e) => setDraft((d) => ({ ...d, is_primary: e.target.checked }))} /> Primary</label>
           <button onClick={add} className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs rounded">Save</button>
@@ -161,6 +165,61 @@ const ChildPanel = ({ rows, kind, reload }) => (
     ))}
   </div>
 );
+
+// Employee panel — extended fields with confirm/terminate quick-actions.
+const EmployeePanel = ({ rows, reload }) => {
+  const confirm = async (id) => {
+    const date = prompt("Confirmation date (YYYY-MM-DD, blank = today):") || "";
+    await axios.post(`${API}registration/employees/${id}/confirm`, date ? { confirmation_date: date } : {});
+    reload();
+  };
+  const terminate = async (id) => {
+    const reason = prompt("Termination reason (optional):") || "";
+    if (!window.confirm("Terminate this employee?")) return;
+    await axios.post(`${API}registration/employees/${id}/terminate`, { reason });
+    reload();
+  };
+  return (
+    <div className="space-y-3">
+      {rows.length === 0 && <p className="text-sm text-gray-500">No Employee record. Assign the "Employee" (or "Staff") role on the Roles tab to auto-create one.</p>}
+      {rows.map((r) => (
+        <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="font-mono text-sm text-emerald-700">{r.employee_id}</p>
+              <p className="text-xs text-gray-500">{r.designation} · {r.department || "—"}</p>
+            </div>
+            <div className="flex gap-2">
+              {r.is_probation && (
+                <button onClick={() => confirm(r.id)} className="px-2 py-1 text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded">
+                  Confirm
+                </button>
+              )}
+              {!["Terminated", "Resigned", "Retired"].includes(r.status) && (
+                <button onClick={() => terminate(r.id)} className="px-2 py-1 text-xs bg-rose-100 text-rose-700 hover:bg-rose-200 rounded">
+                  Terminate
+                </button>
+              )}
+              <span className="text-[11px] uppercase px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{r.status}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            {Object.entries(r).filter(([k]) => !["id", "createdAt", "updatedAt", "registrationId", "contactId", "salary_gross"].includes(k)).map(([k, v]) => (
+              <div key={k}>
+                <p className="text-gray-500 text-[10px] uppercase">{k}</p>
+                <p className="text-gray-800 break-all">{v == null ? "—" : String(v)}</p>
+              </div>
+            ))}
+            <div>
+              <p className="text-gray-500 text-[10px] uppercase">salary_gross (virtual)</p>
+              <p className="text-gray-800 font-semibold">{r.salary_gross != null ? r.salary_gross : "—"}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const LogsPanel = ({ reg }) => (
   <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
