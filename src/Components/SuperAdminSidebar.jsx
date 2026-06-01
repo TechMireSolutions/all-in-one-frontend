@@ -17,8 +17,7 @@ import { PROJECT_TRACKER_VIEW_KEY, PROJECT_TRACKER_EDIT_KEY } from "../Constants
 const navConfig = {
   superadmin: [
     { path: "/contacts",          label: "Contacts",      icon: Contact,  roles: ["superadmin", "hr"] },
-    { path: "/registration/forms", label: "Registration", icon: Users,    roles: ["superadmin", "hr"] },
-    { path: "/users",             label: "Employees",     icon: UserPlus, roles: ["superadmin", "hr"] },
+    { path: "/users",             label: "Registration",  icon: Users, roles: ["superadmin", "hr"] },
     { path: "/accounts",          label: "Accounts",      icon: DollarSign, roles: ["superadmin", "hr"] },
     {
       label: "Management",
@@ -29,16 +28,7 @@ const navConfig = {
         { path: "/registerusers", label: "Payrolls",     icon: DollarSign },
       ],
     },
-    {
-      label: "Records",
-      icon: UserX,
-      roles: ["superadmin", "hr"],
-      children: [
-        { path: "/ex-employees", label: "Ex-Employees",  icon: UserX },
-        { path: "/students",     label: "Students",      icon: GraduationCap },
-        { path: "/ojt",          label: "OJT Trainees",  icon: Briefcase },
-      ],
-    },
+    { path: "/ex-employees",      label: "Ex-Employees",  icon: UserX,    roles: ["superadmin", "hr"] },
     { path: "/view",      label: "Attendance", icon: Eye,      roles: ["superadmin", "hr", "employee", "ojt", "student"] },
     { path: "/policies",  label: "Policies",   icon: FileText, roles: ["superadmin", "hr", "employee", "ojt", "student"] },
     { path: "/activities",label: "Activities", icon: LayoutDashboard, roles: ["ojt", "student"] },
