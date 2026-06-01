@@ -25,26 +25,27 @@ const Contacts = () => {
   const [waBody, setWaBody] = useState("Assalamu alaikum {{name}} 👋, this is Techmire Solutions reaching out. We'd love to share more about our programs.");
   const [genderFilter, setGenderFilter] = useState("all");
   const [activeFormTab, setActiveFormTab] = useState("identity");
-  const [emergency, setEmergency] = useState({ name: "", phone: "", relation: "Parent" });
-  const [family, setFamily] = useState({
-    father_name: "", father_phone: "", father_email: "",
-    mother_name: "", mother_phone: "", mother_email: "",
-  });
-  const [education, setEducation] = useState({
-    degree: "", institute: "", grade: "", year: "", current_study: "",
-  });
-  const [experience, setExperience] = useState({
-    teach_subjects: "", teach_institute: "", teach_contact: "",
-    position: "", organization: "", skills: "",
-  });
-  const [office, setOffice] = useState({
-    employee_id: "", registration_date: "", joining_date: "",
-    post_applied_for: "", check_in_time: "", check_out_time: "",
-    salary_cap: "", description: "",
-  });
-  const [health, setHealth] = useState({
-    any_disease: "No", disease_details: "",
-  });
+
+  // 1:Many child arrays — each tab holds a list of rows now (not a single object).
+  // Empty rows are stripped client-side before submit.
+  const [emergencies, setEmergencies] = useState([]);   // { name, relation, phone_number, email, address, is_primary }
+  const [educations,  setEducations]  = useState([]);   // { degree, field_of_study, institute, grade, start_year, end_year, is_current }
+  const [experiences, setExperiences] = useState([]);   // { organization, post, experience_type, start_date, end_date, is_current, responsibilities }
+  const [offices,     setOffices]     = useState([]);   // { employee_id, joining_date, leaving_date, post, department, employment_type, status, reporting_to }
+  const [healths,     setHealths]     = useState([]);   // { disease, severity, diagnosed_on, medication, notes, is_active }
+
+  const EMPTY_ROW = {
+    emergency:  { name: "", relation: "Father", phone_number: "", email: "", address: "", is_primary: false },
+    education:  { degree: "", field_of_study: "", institute: "", grade: "", start_year: "", end_year: "", is_current: false },
+    experience: { organization: "", post: "", experience_type: "Professional", start_date: "", end_date: "", is_current: false, responsibilities: "" },
+    office:     { employee_id: "", joining_date: "", leaving_date: "", post: "", department: "", employment_type: "Full-time", status: "Active", reporting_to: "" },
+    health:     { disease: "", severity: "Mild", diagnosed_on: "", medication: "", notes: "", is_active: true },
+  };
+
+  // Helpers for repeatable-row sections.
+  const addRow    = (setter, kind) => setter((rows) => [...rows, { ...EMPTY_ROW[kind] }]);
+  const removeRow = (setter, idx)  => setter((rows) => rows.filter((_, i) => i !== idx));
+  const updateRow = (setter, idx, key, val) => setter((rows) => rows.map((r, i) => i === idx ? { ...r, [key]: val } : r));
 
   const [duplicatesMap, setDuplicatesMap] = useState([]);
   const [activeDuplicatePair, setActiveDuplicatePair] = useState(null);
@@ -182,12 +183,17 @@ const Contacts = () => {
     payload.append("emails", JSON.stringify(finalEmails));
     payload.append("addresses", JSON.stringify(finalAddresses));
     payload.append("socials", JSON.stringify(finalSocials));
-    payload.append("family",     JSON.stringify(family));
-    payload.append("education",  JSON.stringify(education));
-    payload.append("experience", JSON.stringify(experience));
-    payload.append("office",     JSON.stringify(office));
-    payload.append("health",     JSON.stringify(health));
-    payload.append("emergency",  JSON.stringify(emergency));
+    // Strip blank rows (e.g. an emergency row where name is empty)
+    const finalEmergencies  = emergencies.filter((r) => r.name?.trim() && r.phone_number?.trim());
+    const finalEducations   = educations.filter((r) => r.degree?.trim() && r.institute?.trim());
+    const finalExperiences  = experiences.filter((r) => r.organization?.trim() && r.post?.trim());
+    const finalOffices      = offices.filter((r) => r.employee_id?.trim());
+    const finalHealths      = healths.filter((r) => r.disease?.trim());
+    payload.append("emergencies", JSON.stringify(finalEmergencies));
+    payload.append("educations",  JSON.stringify(finalEducations));
+    payload.append("experiences", JSON.stringify(finalExperiences));
+    payload.append("offices",     JSON.stringify(finalOffices));
+    payload.append("healths",     JSON.stringify(finalHealths));
     if (imageFile) payload.append("profile_picture", imageFile);
 
     let res;
@@ -218,6 +224,11 @@ const Contacts = () => {
       addresses: [{ address_line1: "", address_line2: "", city: "", state: "", country: "Pakistan", postal_code: "", address_type: "Home" }],
       socials: [{ platform: "LinkedIn", url: "" }]
     });
+    setEmergencies([]);
+    setEducations([]);
+    setExperiences([]);
+    setOffices([]);
+    setHealths([]);
     setImageFile(null);
     setImagePreview(null);
     setFormErrors({});
@@ -229,12 +240,12 @@ const Contacts = () => {
     setSelectedContact(c);
     setActiveFormTab("identity");
     setFormErrors({});
-    setFamily(c.family     || { father_name: "", father_phone: "", father_email: "", mother_name: "", mother_phone: "", mother_email: "" });
-    setEducation(c.education || { degree: "", institute: "", grade: "", year: "", current_study: "" });
-    setExperience(c.experience || { teach_subjects: "", teach_institute: "", teach_contact: "", position: "", organization: "", skills: "" });
-    setOffice(c.office       || { employee_id: "", registration_date: "", joining_date: "", post_applied_for: "", check_in_time: "", check_out_time: "", salary_cap: "", description: "" });
-    setHealth(c.health       || { any_disease: "No", disease_details: "" });
-    setEmergency(c.emergency || { name: "", phone: "", relation: "Parent" });
+    // Hydrate the 1:Many child arrays from API includes.
+    setEmergencies(Array.isArray(c.emergencies) ? c.emergencies : []);
+    setEducations(Array.isArray(c.educations)   ? c.educations   : []);
+    setExperiences(Array.isArray(c.experiences) ? c.experiences  : []);
+    setOffices(Array.isArray(c.offices)         ? c.offices      : []);
+    setHealths(Array.isArray(c.healths)         ? c.healths      : []);
     setFormData({
       first_name: c.first_name || "", last_name: c.last_name || "",
       cnic: c.cnic || "", gender: c.gender || "Male",
@@ -879,12 +890,14 @@ const Contacts = () => {
                   !!formData.last_name,
                   !!formData.cnic,
                   !!formData.dob,
-                  !!(family.father_name || family.mother_name),
                   formData.phoneNumbers.some((p) => p.phone_number),
                   formData.emails.some((e) => e.email_address),
                   formData.addresses.some((a) => a.address_line1),
                   formData.socials.some((s) => s.url),
-                  !!emergency.phone,
+                  emergencies.length > 0,
+                  educations.length > 0,
+                  experiences.length > 0,
+                  offices.length > 0,
                 ];
                 const pct = Math.round((checks.filter(Boolean).length / checks.length) * 100);
                 return (
@@ -908,7 +921,6 @@ const Contacts = () => {
               <div className="px-6 mt-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
                 {[
                   { k: "identity",   l: "Identity",   i: User },
-                  { k: "family",     l: "Family",     i: UsersIcon },
                   { k: "phones",     l: "Phones",     i: Phone },
                   { k: "emails",     l: "Emails",     i: Mail },
                   { k: "addresses",  l: "Addresses",  i: MapPin },
@@ -1149,153 +1161,171 @@ const Contacts = () => {
                   </div>
                 </div>
 
-                {/* Family */}
-                <div className={`${activeFormTab === "family" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <div>
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Father</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className={labelCls}>Father's Name</label>
-                        <input value={family.father_name} onChange={(e) => setFamily({ ...family, father_name: e.target.value })} className={inputCls} placeholder="e.g. Ahmed Raza" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Father's Phone</label>
-                        <input value={family.father_phone} onChange={(e) => setFamily({ ...family, father_phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Father's Email</label>
-                        <input value={family.father_email} onChange={(e) => setFamily({ ...family, father_email: e.target.value })} className={inputCls} placeholder="father@example.com" />
-                      </div>
-                    </div>
+                {/* Education — repeatable rows */}
+                <div className={`${activeFormTab === "education" ? "" : "hidden"} pt-2 space-y-3`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Education History</h4>
+                    <button type="button" onClick={() => addRow(setEducations, "education")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Plus size={14} /> Add Education
+                    </button>
                   </div>
-
-                  <div className="border-t border-gray-100 pt-4">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Mother</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className={labelCls}>Mother's Name</label>
-                        <input value={family.mother_name} onChange={(e) => setFamily({ ...family, mother_name: e.target.value })} className={inputCls} placeholder="e.g. Aisha Raza" />
+                  {educations.length === 0 && <p className="text-xs text-gray-400">No education added yet. Click "Add Education" to start.</p>}
+                  {educations.map((row, i) => (
+                    <div key={i} className="border border-gray-200 bg-gray-50 p-3 rounded-lg relative">
+                      <button type="button" onClick={() => removeRow(setEducations, i)} className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label className={labelCls}>Degree *</label><input value={row.degree} onChange={(e) => updateRow(setEducations, i, "degree", e.target.value)} className={inputCls} placeholder="e.g. BSCS" /></div>
+                        <div><label className={labelCls}>Field of Study</label><input value={row.field_of_study} onChange={(e) => updateRow(setEducations, i, "field_of_study", e.target.value)} className={inputCls} placeholder="e.g. Computer Science" /></div>
+                        <div><label className={labelCls}>Institute *</label><input value={row.institute} onChange={(e) => updateRow(setEducations, i, "institute", e.target.value)} className={inputCls} placeholder="e.g. FAST NUCES" /></div>
+                        <div><label className={labelCls}>Grade</label><input value={row.grade} onChange={(e) => updateRow(setEducations, i, "grade", e.target.value)} className={inputCls} placeholder="A / 3.8 GPA" /></div>
+                        <div><label className={labelCls}>Start Year</label><input type="number" value={row.start_year} onChange={(e) => updateRow(setEducations, i, "start_year", e.target.value)} className={inputCls} placeholder="2018" /></div>
+                        <div><label className={labelCls}>End Year</label><input type="number" value={row.end_year} onChange={(e) => updateRow(setEducations, i, "end_year", e.target.value)} className={inputCls} placeholder="2022" /></div>
                       </div>
-                      <div>
-                        <label className={labelCls}>Mother's Phone</label>
-                        <input value={family.mother_phone} onChange={(e) => setFamily({ ...family, mother_phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Mother's Email</label>
-                        <input value={family.mother_email} onChange={(e) => setFamily({ ...family, mother_email: e.target.value })} className={inputCls} placeholder="mother@example.com" />
-                      </div>
+                      <label className="inline-flex items-center gap-2 mt-2 text-xs">
+                        <input type="checkbox" checked={!!row.is_current} onChange={(e) => updateRow(setEducations, i, "is_current", e.target.checked)} />
+                        Currently studying
+                      </label>
                     </div>
-                  </div>
-
-                  <p className="text-[11px] text-gray-400">
-                    Family details are kept locally for now. We can persist them to the Contact model once the backend columns are added.
-                  </p>
+                  ))}
                 </div>
 
-                {/* Education */}
-                <div className={`${activeFormTab === "education" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Last Education</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className={labelCls}>Degree</label><input value={education.degree} onChange={(e) => setEducation({ ...education, degree: e.target.value })} className={inputCls} placeholder="Enter Degree" /></div>
-                    <div><label className={labelCls}>Institute</label><input value={education.institute} onChange={(e) => setEducation({ ...education, institute: e.target.value })} className={inputCls} placeholder="Enter Institute" /></div>
-                    <div>
-                      <label className={labelCls}>Grade</label>
-                      <select value={education.grade} onChange={(e) => setEducation({ ...education, grade: e.target.value })} className={inputCls}>
-                        <option value="">Select Grade</option><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C+</option><option>C</option><option>D</option>
-                      </select>
-                    </div>
-                    <div><label className={labelCls}>Year</label><input value={education.year} onChange={(e) => setEducation({ ...education, year: e.target.value })} className={inputCls} placeholder="Enter Year" /></div>
-                    <div className="md:col-span-2"><label className={labelCls}>Current Study (Ongoing)</label><input value={education.current_study} onChange={(e) => setEducation({ ...education, current_study: e.target.value })} className={inputCls} placeholder="e.g. BSCS, MCS (if ongoing)" /></div>
+                {/* Experience — repeatable rows */}
+                <div className={`${activeFormTab === "experience" ? "" : "hidden"} pt-2 space-y-3`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Work / Teaching Experience</h4>
+                    <button type="button" onClick={() => addRow(setExperiences, "experience")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Plus size={14} /> Add Experience
+                    </button>
                   </div>
+                  {experiences.length === 0 && <p className="text-xs text-gray-400">No experience added yet.</p>}
+                  {experiences.map((row, i) => (
+                    <div key={i} className="border border-gray-200 bg-gray-50 p-3 rounded-lg relative">
+                      <button type="button" onClick={() => removeRow(setExperiences, i)} className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label className={labelCls}>Organization *</label><input value={row.organization} onChange={(e) => updateRow(setExperiences, i, "organization", e.target.value)} className={inputCls} placeholder="e.g. Techmire Solutions" /></div>
+                        <div><label className={labelCls}>Post *</label><input value={row.post} onChange={(e) => updateRow(setExperiences, i, "post", e.target.value)} className={inputCls} placeholder="e.g. Software Engineer" /></div>
+                        <div>
+                          <label className={labelCls}>Type</label>
+                          <select value={row.experience_type} onChange={(e) => updateRow(setExperiences, i, "experience_type", e.target.value)} className={inputCls}>
+                            <option>Teaching</option><option>Professional</option><option>Internship</option><option>Volunteer</option><option>Other</option>
+                          </select>
+                        </div>
+                        <div><label className={labelCls}>Start Date</label><input type="date" value={row.start_date} onChange={(e) => updateRow(setExperiences, i, "start_date", e.target.value)} className={inputCls} /></div>
+                        <div><label className={labelCls}>End Date</label><input type="date" value={row.end_date} onChange={(e) => updateRow(setExperiences, i, "end_date", e.target.value)} className={inputCls} /></div>
+                      </div>
+                      <div className="mt-2"><label className={labelCls}>Responsibilities</label><textarea rows={2} value={row.responsibilities} onChange={(e) => updateRow(setExperiences, i, "responsibilities", e.target.value)} className={inputCls} placeholder="Key duties & achievements…" /></div>
+                      <label className="inline-flex items-center gap-2 mt-2 text-xs">
+                        <input type="checkbox" checked={!!row.is_current} onChange={(e) => updateRow(setExperiences, i, "is_current", e.target.checked)} />
+                        Currently working here
+                      </label>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Experience */}
-                <div className={`${activeFormTab === "experience" ? "" : "hidden"} pt-2 space-y-5`}>
-                  <div>
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Past Teaching Experience (Optional)</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div><label className={labelCls}>Teaching Subjects</label><input value={experience.teach_subjects} onChange={(e) => setExperience({ ...experience, teach_subjects: e.target.value })} className={inputCls} placeholder="Enter Subjects" /></div>
-                      <div><label className={labelCls}>Teaching Institute</label><input value={experience.teach_institute} onChange={(e) => setExperience({ ...experience, teach_institute: e.target.value })} className={inputCls} placeholder="Enter Institute" /></div>
-                      <div><label className={labelCls}>Teaching Contact</label><input value={experience.teach_contact} onChange={(e) => setExperience({ ...experience, teach_contact: e.target.value })} className={inputCls} placeholder="Enter Contact (11 digits)" /></div>
-                    </div>
-                  </div>
-                  <div className="border-t border-gray-100 pt-4">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider mb-3">Other Experience (Optional)</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div><label className={labelCls}>Position</label><input value={experience.position} onChange={(e) => setExperience({ ...experience, position: e.target.value })} className={inputCls} placeholder="Employee" /></div>
-                      <div><label className={labelCls}>Organization</label><input value={experience.organization} onChange={(e) => setExperience({ ...experience, organization: e.target.value })} className={inputCls} placeholder="Enter Organization" /></div>
-                      <div><label className={labelCls}>Skills</label><input value={experience.skills} onChange={(e) => setExperience({ ...experience, skills: e.target.value })} className={inputCls} placeholder="e.g. Java, Python" /></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Office */}
+                {/* Office — repeatable rows */}
                 <div className={`${activeFormTab === "office" ? "" : "hidden"} pt-2 space-y-3`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Office Details</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className={labelCls}>Employee ID</label><input value={office.employee_id} onChange={(e) => setOffice({ ...office, employee_id: e.target.value })} className={inputCls} placeholder="Enter Employee ID" /></div>
-                    <div><label className={labelCls}>Registration Date</label><input type="date" value={office.registration_date} onChange={(e) => setOffice({ ...office, registration_date: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Joining Date</label><input type="date" value={office.joining_date} onChange={(e) => setOffice({ ...office, joining_date: e.target.value })} className={inputCls} /></div>
-                    <div>
-                      <label className={labelCls}>Post Applied For</label>
-                      <select value={office.post_applied_for} onChange={(e) => setOffice({ ...office, post_applied_for: e.target.value })} className={inputCls}>
-                        <option value="">Select Post</option><option>Teacher</option><option>Admin</option><option>Accountant</option><option>HR</option><option>Other</option>
-                      </select>
-                    </div>
-                    <div><label className={labelCls}>Check-In Time</label><input type="time" value={office.check_in_time} onChange={(e) => setOffice({ ...office, check_in_time: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Check-Out Time</label><input type="time" value={office.check_out_time} onChange={(e) => setOffice({ ...office, check_out_time: e.target.value })} className={inputCls} /></div>
-                    <div><label className={labelCls}>Salary Cap</label><input type="number" value={office.salary_cap} onChange={(e) => setOffice({ ...office, salary_cap: e.target.value })} className={inputCls} placeholder="Enter Salary Cap (e.g. 50000)" /></div>
-                    <div><label className={labelCls}>Description (Optional)</label><input value={office.description} onChange={(e) => setOffice({ ...office, description: e.target.value })} className={inputCls} placeholder="Enter Description" /></div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Office / Employment</h4>
+                    <button type="button" onClick={() => addRow(setOffices, "office")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Plus size={14} /> Add Office Record
+                    </button>
                   </div>
+                  {offices.length === 0 && <p className="text-xs text-gray-400">No office records added yet.</p>}
+                  {offices.map((row, i) => (
+                    <div key={i} className="border border-gray-200 bg-gray-50 p-3 rounded-lg relative">
+                      <button type="button" onClick={() => removeRow(setOffices, i)} className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label className={labelCls}>Employee ID *</label><input value={row.employee_id} onChange={(e) => updateRow(setOffices, i, "employee_id", e.target.value)} className={inputCls} placeholder="EMP-001" /></div>
+                        <div><label className={labelCls}>Post</label><input value={row.post} onChange={(e) => updateRow(setOffices, i, "post", e.target.value)} className={inputCls} placeholder="e.g. Senior Developer" /></div>
+                        <div><label className={labelCls}>Department</label><input value={row.department} onChange={(e) => updateRow(setOffices, i, "department", e.target.value)} className={inputCls} placeholder="e.g. Engineering" /></div>
+                        <div>
+                          <label className={labelCls}>Employment Type</label>
+                          <select value={row.employment_type} onChange={(e) => updateRow(setOffices, i, "employment_type", e.target.value)} className={inputCls}>
+                            <option>Full-time</option><option>Part-time</option><option>Contract</option><option>Intern</option>
+                          </select>
+                        </div>
+                        <div><label className={labelCls}>Joining Date</label><input type="date" value={row.joining_date} onChange={(e) => updateRow(setOffices, i, "joining_date", e.target.value)} className={inputCls} /></div>
+                        <div><label className={labelCls}>Leaving Date</label><input type="date" value={row.leaving_date} onChange={(e) => updateRow(setOffices, i, "leaving_date", e.target.value)} className={inputCls} /></div>
+                        <div>
+                          <label className={labelCls}>Status</label>
+                          <select value={row.status} onChange={(e) => updateRow(setOffices, i, "status", e.target.value)} className={inputCls}>
+                            <option>Active</option><option>Inactive</option><option>Terminated</option><option>Resigned</option>
+                          </select>
+                        </div>
+                        <div><label className={labelCls}>Reporting To (Contact UUID)</label><input value={row.reporting_to} onChange={(e) => updateRow(setOffices, i, "reporting_to", e.target.value)} className={inputCls} placeholder="Manager's contact UUID (optional)" /></div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Health */}
+                {/* Health — repeatable rows */}
                 <div className={`${activeFormTab === "health" ? "" : "hidden"} pt-2 space-y-3`}>
-                  <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Health Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelCls}>Any Disease?</label>
-                      <select value={health.any_disease} onChange={(e) => setHealth({ ...health, any_disease: e.target.value })} className={inputCls}>
-                        <option>No</option><option>Yes</option>
-                      </select>
-                    </div>
-                    {health.any_disease === "Yes" && (
-                      <div className="md:col-span-2"><label className={labelCls}>Details</label><textarea rows={3} value={health.disease_details} onChange={(e) => setHealth({ ...health, disease_details: e.target.value })} className={inputCls} placeholder="Describe medical conditions, allergies, medications…" /></div>
-                    )}
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Health Records</h4>
+                    <button type="button" onClick={() => addRow(setHealths, "health")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Plus size={14} /> Add Condition
+                    </button>
                   </div>
+                  {healths.length === 0 && <p className="text-xs text-gray-400">No health records added yet.</p>}
+                  {healths.map((row, i) => (
+                    <div key={i} className="border border-gray-200 bg-gray-50 p-3 rounded-lg relative">
+                      <button type="button" onClick={() => removeRow(setHealths, i)} className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label className={labelCls}>Disease / Condition *</label><input value={row.disease} onChange={(e) => updateRow(setHealths, i, "disease", e.target.value)} className={inputCls} placeholder="e.g. Diabetes Type 2" /></div>
+                        <div>
+                          <label className={labelCls}>Severity</label>
+                          <select value={row.severity} onChange={(e) => updateRow(setHealths, i, "severity", e.target.value)} className={inputCls}>
+                            <option>Mild</option><option>Moderate</option><option>Severe</option><option>Critical</option>
+                          </select>
+                        </div>
+                        <div><label className={labelCls}>Diagnosed On</label><input type="date" value={row.diagnosed_on} onChange={(e) => updateRow(setHealths, i, "diagnosed_on", e.target.value)} className={inputCls} /></div>
+                        <div><label className={labelCls}>Medication</label><input value={row.medication} onChange={(e) => updateRow(setHealths, i, "medication", e.target.value)} className={inputCls} placeholder="e.g. Metformin 500mg" /></div>
+                      </div>
+                      <div className="mt-2"><label className={labelCls}>Notes</label><textarea rows={2} value={row.notes} onChange={(e) => updateRow(setHealths, i, "notes", e.target.value)} className={inputCls} placeholder="Allergies, restrictions, recent updates…" /></div>
+                      <label className="inline-flex items-center gap-2 mt-2 text-xs">
+                        <input type="checkbox" checked={row.is_active !== false} onChange={(e) => updateRow(setHealths, i, "is_active", e.target.checked)} />
+                        Active condition
+                      </label>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Emergency */}
-                <div className={`${activeFormTab === "emergency" ? "" : "hidden"} pt-2`}>
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Emergency Contact</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">Used by staff to reach next of kin in case of urgency.</p>
+                {/* Emergency — repeatable rows */}
+                <div className={`${activeFormTab === "emergency" ? "" : "hidden"} pt-2 space-y-3`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-emerald-600 uppercase tracking-wider">Emergency Contacts</h4>
+                    <button type="button" onClick={() => addRow(setEmergencies, "emergency")} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                      <Plus size={14} /> Add Emergency Contact
+                    </button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className={labelCls}>Contact Name</label>
-                      <input value={emergency.name} onChange={(e) => setEmergency({ ...emergency, name: e.target.value })} className={inputCls} placeholder="e.g. Ahmed Raza" />
+                  {emergencies.length === 0 && <p className="text-xs text-gray-400">No emergency contacts yet.</p>}
+                  {emergencies.map((row, i) => (
+                    <div key={i} className="border border-gray-200 bg-gray-50 p-3 rounded-lg relative">
+                      <button type="button" onClick={() => removeRow(setEmergencies, i)} className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label className={labelCls}>Name *</label><input value={row.name} onChange={(e) => updateRow(setEmergencies, i, "name", e.target.value)} className={inputCls} placeholder="e.g. Abdul Karim" /></div>
+                        <div>
+                          <label className={labelCls}>Relation *</label>
+                          <select value={row.relation} onChange={(e) => updateRow(setEmergencies, i, "relation", e.target.value)} className={inputCls}>
+                            <option>Father</option><option>Mother</option><option>Spouse</option><option>Sibling</option><option>Son</option><option>Daughter</option><option>Friend</option><option>Guardian</option><option>Other</option>
+                          </select>
+                        </div>
+                        <div><label className={labelCls}>Phone (E.164) *</label><input value={row.phone_number} onChange={(e) => updateRow(setEmergencies, i, "phone_number", e.target.value)} className={inputCls} placeholder="+923001234567" /></div>
+                        <div><label className={labelCls}>Email</label><input value={row.email} onChange={(e) => updateRow(setEmergencies, i, "email", e.target.value)} className={inputCls} placeholder="optional@example.com" /></div>
+                        <div className="md:col-span-2"><label className={labelCls}>Address</label><input value={row.address} onChange={(e) => updateRow(setEmergencies, i, "address", e.target.value)} className={inputCls} placeholder="House #, street, city" /></div>
+                      </div>
+                      <label className="inline-flex items-center gap-2 mt-2 text-xs">
+                        <input type="checkbox" checked={!!row.is_primary} onChange={(e) => updateRow(setEmergencies, i, "is_primary", e.target.checked)} />
+                        Primary contact
+                      </label>
                     </div>
-                    <div>
-                      <label className={labelCls}>Phone</label>
-                      <input value={emergency.phone} onChange={(e) => setEmergency({ ...emergency, phone: e.target.value })} className={inputCls} placeholder="+923XXXXXXXXX" />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Relation</label>
-                      <select value={emergency.relation} onChange={(e) => setEmergency({ ...emergency, relation: e.target.value })} className={inputCls}>
-                        <option>Parent</option><option>Spouse</option><option>Sibling</option><option>Guardian</option><option>Friend</option><option>Other</option>
-                      </select>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-3">
-                    Note: emergency contact data is kept locally for now. We'll persist it to the Contact model when the backend column is added.
-                  </p>
+                  ))}
                 </div>
 
                 {/* Actions */}
                 <div className="flex justify-between items-center gap-3 pt-4 border-t border-gray-200">
                   <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                    {["identity", "family", "phones", "emails", "addresses", "education", "experience", "office", "health", "socials", "emergency"].map((k, i, arr) => {
+                    {["identity", "phones", "emails", "addresses", "education", "experience", "office", "health", "socials", "emergency"].map((k, i, arr) => {
                       const idx = arr.indexOf(activeFormTab);
                       return (
                         <button
